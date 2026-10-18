@@ -1,4 +1,5 @@
 export interface Config {
+    tasksOnly: boolean
     sessionPath: string
     headless: boolean
     clusters: number
@@ -67,6 +68,7 @@ export interface ConfigWorkers {
     doDailyCheckIn: boolean
     doReadToEarn: boolean
     doActivateSearchPerk: boolean
+    doSearchStreak: boolean
     doVisualSearch: boolean
 }
 

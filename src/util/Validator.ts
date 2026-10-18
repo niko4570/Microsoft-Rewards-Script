@@ -102,6 +102,7 @@ const WebhookSchema = z.object({
 })
 
 export const ConfigSchema = z.object({
+    tasksOnly: z.boolean().default(false),
     sessionPath: z.string(),
     headless: z.boolean(),
     clusters: z.number().int().nonnegative(),
@@ -123,6 +124,7 @@ export const ConfigSchema = z.object({
         doDailyCheckIn: z.boolean(),
         doReadToEarn: z.boolean(),
         doActivateSearchPerk: z.boolean(),
+        doSearchStreak: z.boolean().default(false),
         doVisualSearch: z.boolean().default(false)
     }),
     activities: z
@@ -246,6 +248,7 @@ export const AccountSchema = z.object({
 })
 
 const defaultConfig: Config = {
+    tasksOnly: false,
     sessionPath: 'sessions',
     headless: true,
     clusters: 1,
@@ -267,6 +270,7 @@ const defaultConfig: Config = {
         doDailyCheckIn: true,
         doReadToEarn: true,
         doActivateSearchPerk: true,
+        doSearchStreak: false,
         doVisualSearch: false
     },
     activities: {

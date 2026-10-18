@@ -1,3 +1,4 @@
+reports/
 sessions/
 dist/
 .dev/
@@ -10,3 +11,9 @@ note
 .playwright-chromium-installed
 .stfolder/
 .env
+/config/daily-run-state.json*
+/desktop/out/
+/desktop/runtime/
+/desktop/release/
+/desktop/windows-source/
+/desktop/browser-cache/

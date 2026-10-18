@@ -21,6 +21,9 @@ export const ENV_OVERRIDES: EnvOverrideEntry[] = [
     { env: 'CONFIG_ACCOUNT_DELAY_MIN', path: 'accountDelay.min', type: 'string' },
     { env: 'CONFIG_ACCOUNT_DELAY_MAX', path: 'accountDelay.max', type: 'string' },
 
+    { env: 'CONFIG_TASKS_ONLY', path: 'tasksOnly', type: 'bool' },
+    { env: 'CONFIG_WORKER_SEARCH_STREAK', path: 'workers.doSearchStreak', type: 'bool' },
+
     // Workers
     { env: 'CONFIG_WORKER_DAILY_SET', path: 'workers.doDailySet', type: 'bool' },
     { env: 'CONFIG_WORKER_CLAIM_BONUS_POINTS', path: 'workers.doClaimBonusPoints', type: 'bool' },
@@ -269,7 +272,10 @@ Examples:
                 process.exit(1)
             }
             report.forced.forEach(f => console.log(`[entrypoint]   .${f.path} = ${f.value} (forced)`))
-            report.applied.forEach(a => console.log(`[entrypoint]   .${a.path} = ${JSON.stringify(a.value)}`))
+            report.applied.forEach(a => {
+                const sensitive = /token|secret|password|chatid|webhook.*url/i.test(a.path)
+                console.log(`[entrypoint]   .${a.path} = ${sensitive ? '[redacted]' : JSON.stringify(a.value)}`)
+            })
             console.log(`[entrypoint] Applied ${report.applied.length} override(s).`)
             process.exit(0)
         } catch (err) {

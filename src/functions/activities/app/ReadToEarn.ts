@@ -3,6 +3,7 @@ import { BING_APP_USER_AGENT } from '../../../constants/userAgents'
 import type { HttpRequestConfig } from '../../../util/Http'
 import { randomBytes } from 'crypto'
 import { BaseActivity } from '../BaseActivity'
+import { readingOffer } from '../../TaskPolicy'
 
 export class ReadToEarn extends BaseActivity {
     public async doReadToEarn() {
@@ -26,17 +27,26 @@ export class ReadToEarn extends BaseActivity {
         )
 
         try {
+            const offer = readingOffer(await this.bot.browser.func.getAppDashboardData())
+            if (!offer) {
+                this.bot.logger.info(
+                    this.bot.isMobile,
+                    'READ-TO-EARN',
+                    'No eligible reading activity returned for this account'
+                )
+                return
+            }
             const jsonData = {
                 amount: 1,
                 id: '1',
                 type: 101,
                 attributes: {
-                    offerid: 'ENUS_readarticle3_30points'
+                    offerid: offer.id
                 },
                 country: this.bot.userData.geoLocale
             }
 
-            const articleCount = 10
+            const articleCount = Math.min(30, offer.remaining)
             let totalGained = 0
             let articlesRead = 0
             let oldBalance = startBalance
@@ -53,6 +63,7 @@ export class ReadToEarn extends BaseActivity {
                 const request: HttpRequestConfig = {
                     url: URLs.platform.activities,
                     method: 'POST',
+                    retries: this.bot.config.tasksOnly ? 0 : undefined,
                     headers: {
                         Authorization: `Bearer ${this.bot.accessToken}`,
                         'User-Agent': BING_APP_USER_AGENT,
@@ -108,6 +119,9 @@ export class ReadToEarn extends BaseActivity {
                     'READ-TO-EARN',
                     `Waiting between articles | article=${i + 1}/${articleCount} | delayRange=${delayMin}-${delayMax}`
                 )
+
+                const pending = readingOffer(await this.bot.browser.func.getAppDashboardData())
+                if (!pending || pending.id !== offer.id) break
 
                 if (i < articleCount - 1) {
                     await this.bot.utils.wait(this.bot.utils.randomDelay(delayMin, delayMax))

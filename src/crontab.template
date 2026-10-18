@@ -4,4 +4,6 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 TZ=${TZ}
 
 # Run automation according to CRON_SCHEDULE; redirect both stdout & stderr to Docker logs
-${CRON_SCHEDULE} /bin/bash /usr/src/microsoft-rewards-script/scripts/docker/run_daily.sh >> /proc/1/fd/1 2>&1
+${CRON_SCHEDULE} DAILY_TRIGGER=cron /bin/bash /usr/src/microsoft-rewards-script/scripts/docker/run_daily.sh >> /proc/1/fd/1 2>&1
+# Catch up after late startup or resume; the runner checks the effective schedule and saved state.
+*/5 * * * * DAILY_TRIGGER=catchup SKIP_RANDOM_SLEEP=true /bin/bash /usr/src/microsoft-rewards-script/scripts/docker/run_daily.sh >> /proc/1/fd/1 2>&1

@@ -48,6 +48,7 @@ export class AppReward extends BaseActivity {
             const request: HttpRequestConfig = {
                 url: URLs.platform.activities,
                 method: 'POST',
+                retries: this.bot.config.tasksOnly ? 0 : undefined,
                 headers: {
                     Authorization: `Bearer ${this.bot.accessToken}`,
                     'User-Agent': BING_APP_USER_AGENT,

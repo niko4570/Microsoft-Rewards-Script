@@ -134,7 +134,7 @@ export class UrlReward extends BaseActivity {
     }
 
     private async retryAfterRequestFailure(promotion: BasePromotion, allowSessionRepair: boolean): Promise<boolean> {
-        if (!allowSessionRepair) return false
+        if (!allowSessionRepair || this.bot.config.tasksOnly) return false
 
         const refreshed = await this.bot.refreshCurrentRewardsContext(`URL-REWARD:${promotion.offerId}`)
         if (!refreshed) return false

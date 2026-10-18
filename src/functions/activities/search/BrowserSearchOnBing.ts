@@ -62,7 +62,7 @@ export class SearchOnBing extends BaseActivity {
     }
 
     private async searchBing(page: Page, queries: string[], promotion: BasePromotion) {
-        queries = [...new Set(queries)]
+        queries = [...new Set(queries)].slice(0, 3)
         const offerId = promotion.offerId
 
         this.bot.logger.debug(

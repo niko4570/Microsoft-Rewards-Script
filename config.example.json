@@ -23,7 +23,8 @@
         "doDailyCheckIn": true,
         "doReadToEarn": true,
         "doActivateSearchPerk": true,
-        "doVisualSearch": false
+        "doVisualSearch": false,
+        "doSearchStreak": false
     },
     "activities": {
         "urlReward": true,
@@ -105,5 +106,6 @@
             "keywords": ["starting account", "select number", "collected", "Fraud_UserWarning_BotScore_UX"],
             "regexPatterns": []
         }
-    }
+    },
+    "tasksOnly": false
 }

@@ -20,7 +20,7 @@ export class MorePromotions extends BaseActivity {
             this.bot.logger.info(
                 this.bot.isMobile,
                 'MORE-PROMOTIONS',
-                'All "More Promotions" items have already been completed'
+                'No actionable More Promotions items in the returned data'
             )
             return
         }

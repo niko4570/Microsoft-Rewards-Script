@@ -45,7 +45,7 @@ function removeExpiredCookies(storageState: StorageState): {
 function getDb(sessionPath: string): DatabaseSync {
     if (db) return db
 
-    const dir = path.resolve(process.cwd(), sessionPath)
+    const dir = path.resolve(process.env.MRS_DATA_DIR || process.cwd(), sessionPath)
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
     try {
         fs.chmodSync(dir, 0o700)
@@ -131,16 +131,6 @@ export function saveStorageState(
              DO UPDATE SET storage_state = excluded.storage_state, updated_at = excluded.updated_at`
         )
         .run(email, platformOf(isMobile), JSON.stringify(sanitized), Date.now())
-}
-
-export function clearStorageState(sessionPath: string, email: string, isMobile: boolean): void {
-    getDb(sessionPath)
-        .prepare(
-            `UPDATE sessions
-             SET storage_state = NULL, updated_at = ?
-             WHERE email = ? AND platform = ?`
-        )
-        .run(Date.now(), email, platformOf(isMobile))
 }
 
 export function saveFingerprint(

@@ -2133,6 +2133,14 @@ the published port is reachable. `CRON_SCHEDULE` remains the base schedule until
 
 ## Startup readiness
 
+The desktop launcher sets `MRS_DATA_DIR` to an isolated writable user-data
+directory. In that mode `API_PORT=0` selects an available port, and the readiness
+line contains the actual bound port. Config and session readers use only that
+data directory, and task processes run with it as their working directory.
+Without `MRS_DATA_DIR`, existing CLI/Docker paths and port validation remain
+unchanged. The desktop keeps a random API token in the main process and never
+exposes it to the renderer. Desktop scheduling is independent of Linux cron.
+
 After the HTTP server begins listening, it writes one machine-readable line to
 stdout:
 

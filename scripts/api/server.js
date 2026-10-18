@@ -104,8 +104,8 @@ try {
 const HOST = envStr('API_HOST') ?? (typeof cliArgs.host === 'string' ? cliArgs.host : '127.0.0.1')
 const PORT =
     cliArgs.port !== undefined
-        ? integerSetting('--port', cliArgs.port, 3010, { max: 65535 })
-        : integerSetting('API_PORT', envStr('API_PORT'), 3010, { max: 65535 })
+        ? integerSetting('--port', cliArgs.port, 3010, { min: process.env.MRS_DATA_DIR ? 0 : 1, max: 65535 })
+        : integerSetting('API_PORT', envStr('API_PORT'), 3010, { min: process.env.MRS_DATA_DIR ? 0 : 1, max: 65535 })
 const TOKEN = envStr('API_TOKEN') ?? (typeof cliArgs.token === 'string' ? cliArgs.token : undefined)
 const CORS_ORIGIN = envStr('API_CORS_ORIGIN') ?? '*'
 const LOG_BUFFER = integerSetting('API_LOG_BUFFER', envStr('API_LOG_BUFFER'), 2000)
@@ -123,7 +123,7 @@ const { command, args } = resolveRunCommand({ projectRoot })
 const pm = new ProcessManager({
     command,
     args,
-    cwd: projectRoot,
+    cwd: process.env.MRS_DATA_DIR || projectRoot,
     stopTimeoutMs: STOP_TIMEOUT_MS,
     logBufferSize: LOG_BUFFER,
     historySize: RUN_HISTORY,
@@ -132,6 +132,13 @@ const pm = new ProcessManager({
 })
 
 const startedAt = Date.now()
+
+// The desktop supervisor tracks the task PID even if this API later crashes.
+if (process.env.MRS_DATA_DIR && process.send) {
+    pm.on('status', status => {
+        if (process.connected) process.send({ type: 'desktop:status', pid: status.pid, state: status.state }, () => {})
+    })
+}
 
 function containsControlCharacters(value) {
     return [...value].some(character => {
@@ -834,7 +841,7 @@ server.listen(PORT, HOST, () => {
 
     const ready = {
         host: HOST,
-        port: PORT,
+        port: server.address().port,
         pid: process.pid,
         name: pkgName,
         version: pkgVersion,
@@ -861,3 +868,9 @@ async function shutdown(signal, { force = false } = {}) {
 }
 process.on('SIGINT', () => void shutdown('SIGINT'))
 process.on('SIGTERM', () => void shutdown('SIGTERM'))
+if (process.env.MRS_DATA_DIR) {
+    process.on('message', message => {
+        if (message?.type === 'desktop:shutdown') void shutdown('desktop')
+    })
+    process.on('disconnect', () => void shutdown('desktop-disconnected', { force: true }))
+}

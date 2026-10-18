@@ -59,6 +59,21 @@ const BROWSER_ARGS = [
 const __dirname = getDirname(import.meta.url)
 const projectRoot = getProjectRoot(__dirname)
 
+let desktopBrowser = null
+let desktopCancelled = false
+if (process.env.MRS_DATA_DIR && process.send) {
+    const cancelDesktopLogin = async () => {
+        desktopCancelled = true
+        if (!desktopBrowser) return // wait until the in-flight launch can be closed
+        await desktopBrowser.close().catch(() => {})
+        process.exit(130)
+    }
+    process.on('disconnect', () => void cancelDesktopLogin())
+    process.on('message', message => {
+        if (message?.type === 'desktop:cancel-login') void cancelDesktopLogin()
+    })
+}
+
 function printHelp() {
     console.log(`
 Microsoft Rewards manual login
@@ -314,9 +329,15 @@ async function runPlatform({ account, config, dbPath, platform, fresh }) {
 
     const browser = await chromium.launch({
         headless: false,
+        ...(process.env.MRS_DATA_DIR ? { channel: 'chromium' } : {}),
         ...(proxy ? { proxy } : {}),
         args: [...BROWSER_ARGS, ...sandboxArgs, ...certArgs]
     })
+    desktopBrowser = browser
+    if (desktopCancelled) {
+        await browser.close().catch(() => {})
+        process.exit(130)
+    }
 
     let interrupted = false
     const stop = async signal => {
@@ -382,6 +403,7 @@ async function runPlatform({ account, config, dbPath, platform, fresh }) {
         process.removeListener('SIGINT', onSigInt)
         process.removeListener('SIGTERM', onSigTerm)
         await browser.close().catch(() => {})
+        if (desktopBrowser === browser) desktopBrowser = null
     }
 }
 
@@ -440,8 +462,12 @@ async function main() {
 
 const isDirectRun = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 if (isDirectRun) {
-    main().catch(error => {
-        log('ERROR', `manualLogin failed: ${error?.message ?? error}`)
-        process.exitCode = 1
-    })
+    main()
+        .catch(error => {
+            log('ERROR', `manualLogin failed: ${error?.message ?? error}`)
+            process.exitCode = 1
+        })
+        .finally(() => {
+            if (process.env.MRS_DATA_DIR && process.send) process.exit(process.exitCode || 0)
+        })
 }

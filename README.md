@@ -2,6 +2,27 @@
 [![Latest Build](https://img.shields.io/github/actions/workflow/status/TheNetsky/Microsoft-Rewards-Script/auto-release.yml?branch=v4&style=for-the-badge&label=Latest%20Build)](https://github.com/TheNetsky/Microsoft-Rewards-Script/actions/workflows/auto-release.yml)
 [![Docker](https://img.shields.io/badge/Docker-GHCR-blue?style=for-the-badge&logo=docker)](https://github.com/TheNetsky/Microsoft-Rewards-Script/pkgs/container/microsoft-rewards-script)
 
+# Microsoft Rewards Script and Rewards Desktop
+
+Rewards Desktop **0.1.8** provides a Chinese-language Windows interface for a
+single China-region account. It includes Node.js and Chromium, browser login,
+manual task controls, persistent reports, and automatic runs based on Rewards
+reset times. Git, Node.js, Docker, and WSL are not required to use the desktop app.
+
+- [Downloads and releases](https://github.com/niko4570/Microsoft-Rewards-Script/releases)
+- [Windows setup, upgrades, and validation](docs/windows-desktop.md)
+- [Desktop changelog](desktop/CHANGELOG.md)
+- [China tasks-only setup for WSL and Docker](docs/china-tasks.md)
+
+The desktop build is a preview. Automatic application updates are not available;
+exit the tray app and run the newer installer to upgrade. Keep the same install
+location and user data directory. The installer is unsigned. Download only from
+a trusted source and verify the supplied SHA-256 checksums.
+
+This fork extends [TheNetsky/Microsoft-Rewards-Script](https://github.com/TheNetsky/Microsoft-Rewards-Script).
+The badges above refer to upstream services. The sections below describe the
+script and Docker setup; desktop users should follow the Windows guide.
+
 > [!TIP]
 > This version supports the **new, modern Bing Rewards dashboard only** - it does **not** support the legacy dashboard.
 > If your account still uses the old dashboard, use the [v3 branch](https://github.com/TheNetsky/Microsoft-Rewards-Script/tree/v3) and v3.x releases instead!
@@ -11,6 +32,8 @@
 ---
 
 ## Table of Contents
+
+Windows desktop preview: see the [setup, packaging and validation guide](docs/windows-desktop.md).
 
 - [Table of Contents](#table-of-contents)
 - [Quick Setup](#quick-setup)
@@ -50,7 +73,7 @@ Works on Windows, Linux, macOS, and WSL.
 #### Get the script
 
 ```bash
-git clone https://github.com/TheNetsky/Microsoft-Rewards-Script.git
+git clone https://github.com/niko4570/Microsoft-Rewards-Script.git
 cd Microsoft-Rewards-Script
 ```
 
@@ -473,3 +496,44 @@ Use at your own risk.
 Automation of Microsoft Rewards may lead to account suspension or bans.  
 This software is provided for educational purposes only.  
 The authors are not responsible for any actions taken by Microsoft.
+
+## China tasks-only profile
+
+For the single-account WSL / Windows Docker Desktop setup, see
+[中国区每日任务部署说明](docs/china-tasks.md). The supplied Compose profile builds local
+source and schedules tasks at 13:00 Asia/Shanghai. `tasksOnly` uses saved manual
+login sessions, checks task completion separately from search points, and leaves
+ordinary search quota earning disabled. The generic config default remains the
+original flow; copy `config.tasks.example.json` for WSL task-mode testing.
+
+In tasks-only mode, an unconfirmed app check-in is checked again after the other
+tasks finish, then once per minute up to three times. If the original request
+returned a valid successful response and the app service is still available, a
+single compensating submission is allowed while the same server reset cycle is
+still active. Another three one-minute checks follow if needed. Balance changes
+alone never confirm completion. Transport uncertainty, missing streak data and a
+changed reset cycle prevent compensation; unresolved results ask for a manual
+check. Exclusive reservation files under `reports/app-checkin-recovery/` preserve
+the one-compensation-per-account-and-cycle limit across restarts and manual runs.
+These checks run inside the task process, without launching another full run.
+
+The Docker daily scheduler also checks on container startup and every five minutes
+for a missed run. For a fixed daily cron such as `0 13 * * *`, it waits until the
+scheduled time in `TZ`, then runs only if today's run has not succeeded. Completion
+and attempts are saved atomically in `./config/daily-run-state.json`, so restarts
+and container recreation retain them. Missed previous days are not replayed.
+An interrupted or failed process can retry after `DAILY_RETRY_MINUTES` (default
+30), up to `DAILY_MAX_ATTEMPTS` total attempts per day (default 3). A shared lock
+prevents scheduled checks from starting concurrent runs. Success means the task
+process exited successfully; it does not guarantee every Microsoft activity was
+credited. Manual runs through `run_daily.sh` bypass the daily limit and also save
+successful completion; direct `npm start` or API `/start` runs do not update this
+scheduler record.
+
+Set `DAILY_CATCH_UP=false` to disable startup and periodic catch-up. `RUN_ON_START=true`
+still forces an unconditional startup run. Disabled schedules are respected, and
+weekly or multiple-times-per-day cron expressions retain normal cron behavior
+without daily catch-up. Saved `config/schedule.json` overrides are restored in both
+Docker modes. After updating, rebuild and recreate the container with
+`docker compose up -d --build`. The computer's Docker service and this container
+must start automatically for startup catch-up to work.

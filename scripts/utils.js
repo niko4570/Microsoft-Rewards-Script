@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { dataFile, sessionDirectory } from './runtimePaths.js'
 import { fileURLToPath } from 'url'
 import { DatabaseSync } from 'node:sqlite'
 import { accountIndexesFromEnv, envBool, envInt, envStr, normalizeGeoLocale, normalizeLanguageCode } from './env.js'
@@ -134,12 +135,14 @@ export function loadJsonFile(possiblePaths, required = true) {
 }
 
 export function loadConfig(projectRoot) {
-    const possiblePaths = [
-        path.resolve(process.cwd(), 'config.json'),
-        path.join(projectRoot, 'config.json'),
-        path.join(projectRoot, 'dist', 'config.json'),
-        path.join(projectRoot, 'src', 'config.json')
-    ]
+    const possiblePaths = dataFile('config.json')
+        ? [dataFile('config.json')]
+        : [
+              path.resolve(process.cwd(), 'config.json'),
+              path.join(projectRoot, 'config.json'),
+              path.join(projectRoot, 'dist', 'config.json'),
+              path.join(projectRoot, 'src', 'config.json')
+          ]
 
     const result = loadJsonFile(possiblePaths, true)
 
@@ -157,12 +160,14 @@ export function loadConfig(projectRoot) {
 }
 
 export function loadEnvFile(projectRoot) {
-    const candidates = [
-        path.resolve(process.cwd(), '.env'),
-        path.join(projectRoot, '.env'),
-        path.join(projectRoot, 'dist', '.env'),
-        path.join(projectRoot, 'src', '.env')
-    ]
+    const candidates = dataFile('.env')
+        ? [dataFile('.env')]
+        : [
+              path.resolve(process.cwd(), '.env'),
+              path.join(projectRoot, '.env'),
+              path.join(projectRoot, 'dist', '.env'),
+              path.join(projectRoot, 'src', '.env')
+          ]
 
     const envFile = candidates.find(p => fs.existsSync(p))
     if (!envFile) return
@@ -319,6 +324,10 @@ export function setupCleanupHandlers(cleanupFn) {
 }
 
 export function getSessionDbPath(projectRoot, sessionPath) {
+    if (process.env.MRS_DATA_DIR) {
+        const dbPath = path.join(sessionDirectory(sessionPath), 'sessions.db')
+        return { dbPath, exists: fs.existsSync(dbPath), candidates: [dbPath] }
+    }
     const candidates = [
         path.resolve(process.cwd(), sessionPath, 'sessions.db'),
         path.join(projectRoot, sessionPath, 'sessions.db'),

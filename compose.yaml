@@ -1,27 +1,50 @@
 services:
     microsoft-rewards-script:
-        image: ghcr.io/thenetsky/microsoft-rewards-script:4
-        # To build locally instead of pulling the prebuilt image, use the build section below.
-        #build:
-        #    context: .
+        build:
+            context: .
+        image: microsoft-rewards-script:local
         container_name: microsoft-rewards-script
         restart: unless-stopped
         volumes:
             - ./config:/usr/src/microsoft-rewards-script/config
+            - ./reports:/usr/src/microsoft-rewards-script/reports
             - ./sessions:/usr/src/microsoft-rewards-script/sessions
         env_file:
             # Load account credentials from the .env file (ACCOUNT_1_EMAIL, optional ACCOUNT_1_PASSWORD, etc.)
             - path: .env
         environment:
             # ── Scheduler ──────────────────────────────────────
-            TZ: 'America/Toronto'
+            TZ: 'Asia/Shanghai'
+            ACCOUNT_1_GEO_LOCALE: 'CN'
+            ACCOUNT_1_LANG_CODE: 'zh-CN'
+            ACCOUNT_1_SAVE_FINGERPRINT_MOBILE: 'true'
+            ACCOUNT_1_SAVE_FINGERPRINT_DESKTOP: 'true'
+            CONFIG_TASKS_ONLY: 'true'
+            CONFIG_WORKER_SEARCH_STREAK: 'true'
+            CONFIG_WORKER_DESKTOP_SEARCH: 'false'
+            CONFIG_WORKER_MOBILE_SEARCH: 'false'
+            CONFIG_WORKER_BONUS_SEARCHES: 'false'
+            CONFIG_SEARCH_PARALLEL: 'false'
+            CONFIG_SEARCH_QUERY_ENGINES: 'local'
+            CONFIG_SEARCH_CLUSTER: 'false'
+            CONFIG_WORKER_ACTIVATE_SEARCH_PERK: 'false'
+            CONFIG_TELEGRAM_ENABLED: 'true'
+            CONFIG_TELEGRAM_BOTTOKEN: '${CONFIG_TELEGRAM_BOTTOKEN:?Set Telegram bot token in .env}'
+            CONFIG_TELEGRAM_CHATID: '${CONFIG_TELEGRAM_CHATID:?Set Telegram chat ID in .env}'
+            CONFIG_WEBHOOK_LOG_FILTER_ENABLED: 'true'
+            CONFIG_WEBHOOK_LOG_FILTER_LEVELS: 'error'
+            CONFIG_WEBHOOK_LOG_FILTER_KEYWORDS: 'BOT-WARNING,MANUAL_LOGIN_REQUIRED'
             NODE_ENV: 'production'
             # CRON_SCHEDULE is the *initial* default. It will run as default unless changed by the API
             # API schedule changes are saved to ./config/schedule.json, delete
             # that file to revert to the base CRON_SCHEDULE again.
-            CRON_SCHEDULE: '0 7 * * *' # use crontab.guru to customize your schedule
-            RUN_ON_START: 'true' # run script immediately on container start
-            SKIP_RANDOM_SLEEP: 'false'
+            CRON_SCHEDULE: '0 13 * * *' # use crontab.guru to customize your schedule
+            RUN_ON_START: 'false' # explicit unconditional startup run
+            DAILY_CATCH_UP: 'true' # catch up today's missed daily run on startup / every 5 minutes
+            DAILY_MAX_ATTEMPTS: '3' # total attempts per day, including the initial run
+            DAILY_RETRY_MINUTES: '30'
+            SKIP_RANDOM_SLEEP: 'true'
+            TASK_RUN_USER: 'node' # UID 1000, matching the WSL repository owner
             #MIN_SLEEP_MINUTES: "5"
             #MAX_SLEEP_MINUTES: "50"
             #STUCK_PROCESS_TIMEOUT_HOURS: "8"

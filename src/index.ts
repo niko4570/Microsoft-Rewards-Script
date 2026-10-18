@@ -21,6 +21,8 @@ import type { AccountLocale } from './util/Locale'
 
 import { Login } from './browser/auth/Login'
 import Activities from './functions/Activities'
+import { TaskRunner } from './functions/TaskRunner'
+import { readWithRetry } from './functions/TaskPolicy'
 import { SearchManager } from './functions/activities/search/SearchManager'
 
 import type { Account } from './interface/Account'
@@ -392,7 +394,7 @@ export class MicrosoftRewardsBot {
                 }
 
                 await flushAllWebhooks()
-                process.exit(0)
+                process.exit(stats.some(account => !account.success) ? 1 : 0)
             } catch (error) {
                 this.logger.error(
                     'main',
@@ -532,7 +534,7 @@ export class MicrosoftRewardsBot {
             )
 
             await flushAllWebhooks()
-            process.exit(0)
+            process.exit(accountStats.some(account => !account.success) ? 1 : 0)
         }
 
         return accountStats
@@ -584,7 +586,7 @@ export class MicrosoftRewardsBot {
         this.reactSnapshots = { mobile: null, desktop: null }
         this.searchTopicsCache = null
 
-        const apiSearch = this.config.experimental.apiSearch
+        const apiSearch = !this.config.tasksOnly && this.config.experimental.apiSearch
         const apiSearchOnBing = this.config.experimental.apiSearchOnBing
         const fullApi = apiSearch && (apiSearchOnBing || !this.config.activities.searchOnBing)
         const needsAppActivities =
@@ -595,6 +597,7 @@ export class MicrosoftRewardsBot {
 
         let mobileSession: BrowserSession | null = null
         let desktopSession: BrowserSession | null = null
+        const taskRunner = this.config.tasksOnly ? new TaskRunner(this, accountEmail) : null
         const edgeBrowsingController = new AbortController()
         let edgeBrowsingTask: Promise<void> | null = null
         let edgeBrowsingFinished = false
@@ -657,7 +660,12 @@ export class MicrosoftRewardsBot {
                     )
                 }
 
-                const data: DashboardData = await this.browser.func.getDashboardData()
+                const data: DashboardData = this.config.tasksOnly
+                    ? await readWithRetry(
+                          () => this.browser.func.getDashboardData(),
+                          ms => this.utils.wait(ms)
+                      )
+                    : await this.browser.func.getDashboardData()
                 const hasBotScoreWarning =
                     Array.isArray(data.dashboard.userWarnings) &&
                     data.dashboard.userWarnings.some(warning => warning?.name === 'Fraud_UserWarning_BotScore_UX')
@@ -674,6 +682,7 @@ export class MicrosoftRewardsBot {
                                 'To continue anyway (not recommended), set "contintueOnBotWarning": true.'
                         )
 
+                        await taskRunner?.abort('微软返回账户自动化警告，本次已停止，请手动检查账户')
                         return {
                             initialPoints: availablePoints,
                             collectedPoints: 0,
@@ -723,13 +732,32 @@ export class MicrosoftRewardsBot {
                             'LOGIN-APP',
                             `App dashboard unavailable - app activities will be skipped this run | message=${error instanceof Error ? error.message : String(error)}`
                         )
-                        this.accessToken = ''
+                        // A server failure does not invalidate the freshly acquired app token.
+                        const status = (error as { status?: number }).status
+                        if (!this.config.tasksOnly || status === 401 || status === 403) this.accessToken = ''
                     }
                 }
 
                 this.userData.initialPoints = data.dashboard.userStatus.availablePoints
                 this.userData.currentPoints = data.dashboard.userStatus.availablePoints
                 const initialPoints = this.userData.initialPoints ?? 0
+
+                if (taskRunner) {
+                    await taskRunner.run(data, appData, async () => {
+                        try {
+                            await executionContext.run({ isMobile: false, account }, async () => {
+                                desktopSession = await this.createDesktopSession(account)
+                                await this.activities.doPunchCardsDesktop()
+                            })
+                        } finally {
+                            await closeDesktopSession()
+                        }
+                    })
+                    return {
+                        initialPoints,
+                        collectedPoints: (taskRunner.report.finalPoints ?? initialPoints) - initialPoints
+                    }
+                }
 
                 const browserEarnable = await this.browser.func.getBrowserEarnablePoints(data)
                 let appEarnable: AppEarnablePoints | null = null
@@ -932,6 +960,13 @@ export class MicrosoftRewardsBot {
                     collectedPoints: collectedPoints || 0
                 }
             })
+        } catch (error) {
+            await taskRunner?.abort(
+                error instanceof Error && error.message.includes('MANUAL_LOGIN_REQUIRED')
+                    ? '登录验证未通过，需要在 WSL 手动核对或刷新会话后重试；不一定是会话过期'
+                    : '运行或数据读取失败，请查看本地日志；未确认完成的任务不会自动重复提交'
+            )
+            throw error
         } finally {
             if (edgeBrowsingTask) {
                 edgeBrowsingController.abort()

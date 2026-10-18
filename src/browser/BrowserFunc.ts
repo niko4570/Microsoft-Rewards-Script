@@ -13,6 +13,7 @@ import type { AppUserData } from '../interface/AppUserData'
 import type { AppEarnablePoints, BrowserEarnablePoints } from '../interface/Points'
 import type { AppDashboardData } from '../interface/AppDashBoardData'
 import { detectFlyoutBotWarning, mapFlyoutToDashboard, type RewardsFlyoutData } from './FlyoutDashboard'
+import { mapEarnToDashboard } from './EarnDashboard'
 
 export default class BrowserFunc {
     private bot: MicrosoftRewardsBot
@@ -26,6 +27,16 @@ export default class BrowserFunc {
     }
 
     async getDashboardData(cookies?: Cookie[]): Promise<DashboardData> {
+        if (this.bot.config.tasksOnly) {
+            const snapshot = await this.refreshEarnSnapshot()
+            if (!snapshot) throw new Error('Rewards task page data is unavailable')
+            this.bot.reactSnapshot = snapshot
+            if (this.bot.isMobile) this.bot.reactSnapshots.mobile = snapshot
+            else this.bot.reactSnapshots.desktop = snapshot
+            const data = mapEarnToDashboard(snapshot, this.bot.utils.getFormattedDate())
+            this.bot.logger.debug(this.bot.isMobile, 'GET-DASHBOARD-DATA', 'Using current Rewards page data')
+            return data
+        }
         const fingerprintHeaders = { ...(this.bot.fingerprint?.headers ?? {}) }
         delete fingerprintHeaders['Cookie']
         delete fingerprintHeaders['cookie']
@@ -133,7 +144,8 @@ export default class BrowserFunc {
             const response = await this.bot.http.request(request)
             return response.data as AppDashboardData
         } catch (error) {
-            this.bot.logger.error(
+            const transient = this.bot.config.tasksOnly && ((error as { status?: number }).status ?? 0) >= 500
+            this.bot.logger[transient ? 'warn' : 'error'](
                 this.bot.isMobile,
                 'GET-APP-DASHBOARD-DATA',
                 `Error fetching dashboard data: ${error instanceof Error ? error.message : String(error)}`
@@ -197,8 +209,6 @@ export default class BrowserFunc {
 
     async getAppEarnablePoints(): Promise<AppEarnablePoints> {
         try {
-            const eligibleOffers = ['ENUS_readarticle3_30points', 'Gamification_Sapphire_DailyCheckIn']
-
             const request: HttpRequestConfig = {
                 url: URLs.platform.me('SAAndroid'),
                 method: 'GET',
@@ -213,7 +223,7 @@ export default class BrowserFunc {
             const response = await this.bot.http.request<AppUserData>(request)
             const userData: AppUserData = response.data
             const eligibleActivities = userData.response.promotions.filter(x =>
-                eligibleOffers.includes(x.attributes.offerid ?? '')
+                ['msnreadearn', 'checkin'].includes(x.attributes.type ?? '')
             )
 
             let readToEarn = 0
@@ -258,6 +268,7 @@ export default class BrowserFunc {
     async getCurrentPoints(): Promise<number> {
         try {
             const data = await this.getDashboardData()
+            if (data.availablePointsKnown === false) throw new Error('Rewards page balance is unavailable')
 
             return data.dashboard.userStatus.availablePoints
         } catch (error) {
@@ -298,9 +309,12 @@ export default class BrowserFunc {
             this.bot.nextActions = await this.resolveActionIds(page, sources)
 
             const dashboardRendered = /<section\b[^>]*\bid=["']dailyset["']/i.test(sources.join('\n'))
-            if (!dashboardRendered) {
+            const modernDashboardRendered =
+                new URL(page.url()).hostname === 'rewards.bing.com' &&
+                (snapshot.offers.length > 0 || snapshot.streaks.length > 0)
+            if (!dashboardRendered && !modernDashboardRendered) {
                 throw new Error(
-                    'Rewards dashboard did not render (no section#dailyset) - likely a login/redirect issue, aborting'
+                    'Rewards task data did not render - authentication or service data is unavailable, aborting'
                 )
             }
 
@@ -573,11 +587,13 @@ export default class BrowserFunc {
     }
 
     async getRewardsPageHtml(url: string, route: string): Promise<string | null> {
-        const direct = await this.fetchRewardsHtml(url, route)
-        if (direct !== null) return direct
+        if (!this.bot.config.tasksOnly) {
+            const direct = await this.fetchRewardsHtml(url, route)
+            if (direct !== null) return direct
+        }
 
         const page = this.getActivePage()
-        if (!page) return null
+        if (!page) return this.bot.config.tasksOnly ? await this.fetchRewardsHtml(url, route) : null
 
         try {
             const response = await page.request.get(url, { timeout: 20000 })
@@ -599,7 +615,7 @@ export default class BrowserFunc {
             )
         }
 
-        return null
+        return this.bot.config.tasksOnly ? await this.fetchRewardsHtml(url, route) : null
     }
 
     private getCachedCookies(explicitCookies?: Cookie[], targetUrl?: string): Cookie[] {
@@ -930,7 +946,8 @@ export default class BrowserFunc {
                 ...headers,
                 Cookie: this.buildCookieHeader(this.getCachedCookies(undefined, url))
             },
-            data: JSON.stringify(body)
+            data: JSON.stringify(body),
+            retries: this.bot.config.tasksOnly ? 0 : undefined
         })
         await this.applyResponseCookies(url, response.headers['set-cookie'])
 
@@ -956,7 +973,14 @@ export default class BrowserFunc {
         ])
         const availablePages = pages.filter((html): html is string => html !== null)
 
-        return availablePages.length ? this.bot.browser.react.snapshotPage(availablePages) : null
+        if (!availablePages.length) return null
+        const snapshot = this.bot.browser.react.snapshotPage(availablePages)
+        if (this.bot.config.tasksOnly && snapshot.account.level === null && snapshot.account.availablePoints === null)
+            return null
+        this.bot.reactSnapshot = snapshot
+        if (this.bot.isMobile) this.bot.reactSnapshots.mobile = snapshot
+        else this.bot.reactSnapshots.desktop = snapshot
+        return snapshot
     }
 
     private async fetchRewardsHtml(url: string, route: string): Promise<string | null> {

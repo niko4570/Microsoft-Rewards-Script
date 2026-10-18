@@ -1,0 +1,50 @@
+name: Windows desktop test package
+
+on:
+    workflow_dispatch:
+    push:
+        tags: ['desktop-v*']
+    pull_request:
+        paths: ['desktop/**', 'scripts/**', 'src/**', 'package*.json', '.github/workflows/desktop-windows.yml']
+
+permissions:
+    contents: read
+
+jobs:
+    package:
+        runs-on: windows-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: '24'
+                  cache: npm
+                  cache-dependency-path: |
+                      package-lock.json
+                      desktop/package-lock.json
+            - run: npm ci
+            - run: npm run build
+            - run: npm run lint
+            - run: npm run test:tasks
+            - run: npm run test:log-parser
+            # The Docker shell-runner integration is Linux-only; pure schedule
+            # cases and the desktop scheduler run on Windows.
+            - run: npm run test:schedule
+            - run: npm ci --prefix desktop
+            - run: npm test --prefix desktop
+            - run: npm run build --prefix desktop
+            - run: npm run test:ui --prefix desktop
+            - run: npm run package:win --prefix desktop
+            - name: Corresponding source snapshot
+              run: git archive --format=zip --output=desktop/release/rewards-desktop-source.zip HEAD
+            - name: Include source checksum
+              run: node desktop/build/checksums.mjs
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: rewards-desktop-windows-x64
+                  path: |
+                      desktop/release/*.exe
+                      desktop/release/*.zip
+                      desktop/release/SHA256SUMS.txt
+                      docs/windows-desktop.md
+                  retention-days: 30

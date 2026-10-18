@@ -1,8 +1,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+import { sessionDirectory } from '../runtimePaths.js'
 
 function resolveSessionDb(projectRoot, sessionPath) {
+    if (process.env.MRS_DATA_DIR) {
+        const dbPath = path.join(sessionDirectory(sessionPath), 'sessions.db')
+        return { dbPath, exists: fs.existsSync(dbPath) }
+    }
     const candidates = [
         path.resolve(process.cwd(), sessionPath, 'sessions.db'),
         path.join(projectRoot, sessionPath, 'sessions.db'),

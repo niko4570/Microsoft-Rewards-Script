@@ -9,7 +9,11 @@ export class DailySet extends BaseActivity {
             data.dashboard.dailySetPromotions[today]?.filter(item => !item.complete && item.pointProgressMax > 0) ?? []
 
         if (!pending.length) {
-            this.bot.logger.info(this.bot.isMobile, 'DAILY-SET', 'All "Daily Set" items have already been completed')
+            this.bot.logger.info(
+                this.bot.isMobile,
+                'DAILY-SET',
+                'No pending Daily Set items in the returned data (completion not verified)'
+            )
             return
         }
 

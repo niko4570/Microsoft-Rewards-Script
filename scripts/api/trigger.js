@@ -102,7 +102,7 @@ const { status, body } = await request('POST', '/start', buildStartBody())
 
 if (status === 409) {
     console.log('[trigger] A run is already in progress (409 Conflict). Skipping.')
-    process.exit(0)
+    process.exit(3)
 }
 
 if (status !== 202) {

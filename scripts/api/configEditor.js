@@ -1,8 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { dataFile } from '../runtimePaths.js'
 
 function resolveConfigPath(projectRoot) {
+    if (dataFile('config.json')) return dataFile('config.json')
     const candidates = [
         path.join(projectRoot, 'config.json'),
         path.join(projectRoot, 'dist', 'config.json'),

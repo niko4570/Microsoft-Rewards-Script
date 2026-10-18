@@ -2,6 +2,7 @@
 set -euo pipefail
 
 _SKIP_SLEEP_OVERRIDE="${SKIP_RANDOM_SLEEP:-}"
+_DAILY_TRIGGER_OVERRIDE="${DAILY_TRIGGER:-}"
 
 # Restore container environment (ACCOUNT_*, CONFIG_*, etc.) lost when cron spawns this job
 if [ -f /etc/container_env ]; then
@@ -12,11 +13,24 @@ fi
 # Re-apply the caller's override so sourcing /etc/container_env can't reset it.
 [ -n "$_SKIP_SLEEP_OVERRIDE" ] && SKIP_RANDOM_SLEEP="$_SKIP_SLEEP_OVERRIDE"
 unset _SKIP_SLEEP_OVERRIDE
+[ -n "$_DAILY_TRIGGER_OVERRIDE" ] && DAILY_TRIGGER="$_DAILY_TRIGGER_OVERRIDE"
+unset _DAILY_TRIGGER_OVERRIDE
 
 export PLAYWRIGHT_BROWSERS_PATH=0
 export TZ="${TZ:-UTC}"
 
 cd /usr/src/microsoft-rewards-script
+
+# Cheap eligibility check before taking the shared lock; rechecked under the lock below.
+daily_check() {
+    local status=0
+    node scripts/api/dailySchedule.js "$1" "$DAILY_TRIGGER" || status=$?
+    [ "$status" -eq 10 ] && exit 0
+    [ "$status" -eq 0 ] || exit "$status"
+}
+if [ -n "${DAILY_TRIGGER:-}" ]; then
+    daily_check check
+fi
 
 LOCKFILE=/tmp/run_daily.lock
 
@@ -194,22 +208,36 @@ else
 fi
 
 # Start the actual script
+attempt_date=""
+begin_status=0
+attempt_date=$(node scripts/api/dailySchedule.js begin "${DAILY_TRIGGER:-manual}") || begin_status=$?
+[ "$begin_status" -eq 10 ] && exit 0
+[ "$begin_status" -eq 0 ] || exit "$begin_status"
 echo "[$(date)] [run_daily.sh] Starting script..."
 run_status=0
 if [ "${API_MODE:-false}" = "true" ]; then
     if node scripts/api/trigger.js; then
         echo "[$(date)] [run_daily.sh] Script completed successfully (via API)."
     else
+        trigger_status=$?
         echo "[$(date)] [run_daily.sh] ERROR: Script failed (via API)!" >&2
-        run_status=1
+        run_status=$trigger_status
     fi
 else
-    if npm start; then
+    RUN_COMMAND=(npm start)
+    if [ -n "${TASK_RUN_USER:-}" ]; then
+        RUN_COMMAND=(runuser -u "$TASK_RUN_USER" -- npm start)
+    fi
+    if "${RUN_COMMAND[@]}"; then
         echo "[$(date)] [run_daily.sh] Script completed successfully."
     else
         echo "[$(date)] [run_daily.sh] ERROR: Script failed!" >&2
         run_status=1
     fi
+fi
+
+if [ "$run_status" -eq 0 ] && [ -n "$attempt_date" ]; then
+    node scripts/api/dailySchedule.js finish "${DAILY_TRIGGER:-manual}" "$attempt_date"
 fi
 
 echo "[$(date)] [run_daily.sh] Script finished"

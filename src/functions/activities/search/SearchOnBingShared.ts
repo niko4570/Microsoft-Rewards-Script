@@ -65,6 +65,7 @@ export function findSearchOnBingOffer(dashboard: Dashboard, offerId: string): Ba
     const offers = [
         ...Object.values(dashboard.dailySetPromotions ?? {}).flat(),
         ...(dashboard.morePromotions ?? []),
+        ...(dashboard.morePromotionsWithoutPromotionalItems ?? []),
         ...(dashboard.promotionalItems ?? []),
         ...(dashboard.promotionalItem ? [dashboard.promotionalItem] : [])
     ]
@@ -73,6 +74,8 @@ export function findSearchOnBingOffer(dashboard: Dashboard, offerId: string): Ba
 
 export async function getSearchOnBingQueries(bot: MicrosoftRewardsBot, promotion: BasePromotion): Promise<string[]> {
     try {
+        const linked = searchLinkQuery(promotion.destinationUrl)
+        if (linked) return [linked]
         let activities: ActivityQueries[]
 
         if (bot.config.searchOnBingLocalQueries) {
@@ -119,11 +122,15 @@ export async function getSearchOnBingQueries(bot: MicrosoftRewardsBot, promotion
     }
 }
 
-function fallbackQueries(promotion: BasePromotion): string[] {
+export function fallbackQueries(promotion: BasePromotion): string[] {
     const title = (promotion.title ?? '').trim()
     const description = (promotion.description ?? '').trim()
     const derived = extractSearchTerm(description)
-    return [...new Set([derived, title, description].map(value => value.trim()).filter(Boolean))]
+    const linkedQuery = searchLinkQuery(promotion.destinationUrl)
+    return [...new Set([linkedQuery, derived, title, description].map(value => value.trim()).filter(Boolean))].slice(
+        0,
+        3
+    )
 }
 
 // Microsoft currently supplies English instruction prefixes for this fallback path.
@@ -136,7 +143,19 @@ function extractSearchTerm(description: string): string {
             /^\s*(?:search(?:\s+on\s+bing|\s+bing|\s+the\s+web)?\s+for|look\s+up|find|explore|discover)\b[\s:]+/i,
             ''
         )
+        .replace(/^\s*(?:请)?(?:在必应(?:上)?|使用必应|用必应)?(?:搜索|查找|查询)(?:一下|有关|关于)?[：:\s]*/, '')
         .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
         .replace(/[.!?]+$/g, '')
         .trim()
+}
+
+function searchLinkQuery(destination: string): string {
+    try {
+        const url = new URL(destination)
+        if (url.hostname === 'bing.com' || url.hostname.endsWith('.bing.com'))
+            return url.searchParams.get('q')?.trim() ?? ''
+    } catch {
+        /* No usable search link. */
+    }
+    return ''
 }

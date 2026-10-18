@@ -4,6 +4,7 @@ import path from 'path'
 import type { Account, AccountProxy, ConfigSaveFingerprint } from '../interface/Account'
 import type { Config } from '../interface/Config'
 import { validateAccounts, validateConfig } from './Validator'
+import { computeOverrides } from './ConfigEnvOverrides'
 
 let configCache: Config
 let envLoaded = false
@@ -23,6 +24,10 @@ function getProjectRoot(): string {
 
 // Check root -> dist -> src (not in dist, but root)
 function resolveProjectFile(filename: string): string | undefined {
+    if (process.env.MRS_DATA_DIR) {
+        const target = path.resolve(process.env.MRS_DATA_DIR, filename)
+        return fs.existsSync(target) ? target : undefined
+    }
     const root = getProjectRoot()
     const candidates = [
         path.join(process.cwd(), filename),
@@ -169,7 +174,17 @@ export function loadConfig(): Config {
         }
         const config = fs.readFileSync(configPath, 'utf-8')
 
+        ensureEnvLoaded()
         const unverifiedConfig = JSON.parse(config)
+        const overrides = computeOverrides(process.env)
+        if (overrides.errors.length) throw new Error(overrides.errors.map(error => error.message).join('; '))
+        for (const override of overrides.applied) {
+            const parts = override.path.split('.')
+            let target = unverifiedConfig
+            for (const part of parts.slice(0, -1)) target = target[part] ??= {}
+            target[parts[parts.length - 1]!] = override.value
+        }
+        if (process.env.FORCE_HEADLESS === '1') unverifiedConfig.headless = true
         const configData = validateConfig(unverifiedConfig)
 
         configCache = configData

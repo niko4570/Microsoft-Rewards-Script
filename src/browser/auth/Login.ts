@@ -107,6 +107,26 @@ export class Login {
             await this.bot.browser.utils.reloadBadPage(page)
             await this.bot.browser.utils.disableFido(page)
 
+            if (this.bot.config.tasksOnly) {
+                if (new URL(page.url()).hostname !== 'rewards.bing.com') {
+                    await page
+                        .waitForURL(target => target.hostname === 'rewards.bing.com', {
+                            waitUntil: 'domcontentloaded',
+                            timeout: 30000
+                        })
+                        .catch(() => {})
+                }
+                if (new URL(page.url()).hostname !== 'rewards.bing.com') {
+                    throw new Error('MANUAL_LOGIN_REQUIRED: refresh the saved session with npm run manual-login')
+                }
+                const snapshot = this.bot.browser.react.snapshotPage(await page.content())
+                if (snapshot.account.level === null && snapshot.account.availablePoints === null) {
+                    throw new Error('LOGIN_STATE_UNCONFIRMED: Rewards account data could not be read')
+                }
+                await this.finalizeLogin(page, account)
+                return
+            }
+
             const maxIterations = 25
             let iteration = 0
             let previousState: LoginState = 'UNKNOWN'
@@ -919,6 +939,17 @@ export class Login {
         try {
             await page.goto(url, { waitUntil: 'networkidle', timeout: 10000 }).catch(() => {})
 
+            if (this.bot.config.tasksOnly) {
+                await page
+                    .waitForURL(
+                        target =>
+                            (target.hostname === 'bing.com' || target.hostname.endsWith('.bing.com')) &&
+                            target.hostname !== 'rewards.bing.com',
+                        { waitUntil: 'domcontentloaded', timeout: 30000 }
+                    )
+                    .catch(() => {})
+            }
+
             for (let i = 0; i < loopMax; i++) {
                 if (page.isClosed()) break
 
@@ -928,6 +959,9 @@ export class Login {
                 const hostname = u.hostname.toLowerCase()
                 const atBingPage =
                     (hostname === 'bing.com' || hostname.endsWith('.bing.com')) && hostname !== 'rewards.bing.com'
+                if (!atBingPage && this.bot.config.tasksOnly) {
+                    throw new Error('MANUAL_LOGIN_REQUIRED: Bing session requires manual verification')
+                }
                 if (!atBingPage) {
                     const state = await this.detectCurrentState(page)
                     if (state === 'PASSKEY_ERROR') {
@@ -963,6 +997,7 @@ export class Login {
                 await this.bot.utils.wait(1000)
             }
 
+            if (this.bot.config.tasksOnly) throw new Error('MANUAL_LOGIN_REQUIRED: Bing session could not be verified')
             this.bot.logger.warn(this.bot.isMobile, 'LOGIN-BING', 'Could not verify Bing session, continuing anyway')
         } catch (error) {
             this.bot.logger.warn(
@@ -970,6 +1005,7 @@ export class Login {
                 'LOGIN-BING',
                 `Verification error: ${error instanceof Error ? error.message : String(error)}`
             )
+            if (this.bot.config.tasksOnly) throw error
         }
     }
 

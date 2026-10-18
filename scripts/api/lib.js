@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { dataFile } from '../runtimePaths.js'
 
 export { envBool, envInt, envStr } from '../env.js'
 
@@ -70,11 +71,9 @@ export function getProjectRoot(startDir) {
 }
 
 export function loadEnvFile(projectRoot) {
-    const candidates = [
-        path.resolve(process.cwd(), '.env'),
-        path.join(projectRoot, '.env'),
-        path.join(projectRoot, 'dist', '.env')
-    ]
+    const candidates = dataFile('.env')
+        ? [dataFile('.env')]
+        : [path.resolve(process.cwd(), '.env'), path.join(projectRoot, '.env'), path.join(projectRoot, 'dist', '.env')]
     const envFile = candidates.find(p => fs.existsSync(p))
     if (!envFile) return null
 
@@ -95,12 +94,14 @@ export function loadEnvFile(projectRoot) {
 }
 
 export function loadConfigSafe(projectRoot) {
-    const candidates = [
-        path.join(projectRoot, 'config.json'),
-        path.join(projectRoot, 'dist', 'config.json'),
-        path.join(projectRoot, 'src', 'config.json'),
-        path.resolve(process.cwd(), 'config.json')
-    ]
+    const candidates = dataFile('config.json')
+        ? [dataFile('config.json')]
+        : [
+              path.join(projectRoot, 'config.json'),
+              path.join(projectRoot, 'dist', 'config.json'),
+              path.join(projectRoot, 'src', 'config.json'),
+              path.resolve(process.cwd(), 'config.json')
+          ]
     for (const p of candidates) {
         if (!fs.existsSync(p)) continue
         try {

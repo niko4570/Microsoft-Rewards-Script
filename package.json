@@ -8,6 +8,10 @@
         "node": ">=24.0.0"
     },
     "scripts": {
+        "desktop:build": "npm run build && npm run build --prefix desktop",
+        "desktop:start": "npm run build && npm start --prefix desktop",
+        "desktop:test": "npm test --prefix desktop",
+        "desktop:package": "npm run build && npm run package:win --prefix desktop",
         "pre-build": "npm i && rimraf dist && npx patchright install chromium",
         "install:browser": "npx patchright install chromium",
         "build": "rimraf dist && tsc && node ./scripts/main/copyAssets.js",
@@ -20,12 +24,14 @@
         "lint": "eslint .",
         "lint:fix": "eslint . --fix",
         "test:log-parser": "node --test scripts/api/logParser.test.js",
+        "test:schedule": "node --test --test-isolation=none scripts/api/dailySchedule.test.js",
         "format": "prettier --write .",
         "format:check": "prettier --check .",
         "clear-diagnostics": "rimraf diagnostics",
         "clear-sessions": "node ./scripts/main/clearSessions.js",
         "manual-login": "node ./scripts/main/manualLogin.js",
-        "open-session": "node ./scripts/main/browserSession.js -email"
+        "open-session": "node ./scripts/main/browserSession.js -email",
+        "test:tasks": "npm run build && node --test --test-isolation=none scripts/tests/tasks.test.js scripts/tests/earn-dashboard.test.js scripts/tests/app-oauth.test.js"
     },
     "keywords": [
         "Bing Rewards",

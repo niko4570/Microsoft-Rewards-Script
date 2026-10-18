@@ -30,7 +30,7 @@ export async function sendTelegram(config: WebhookTelegramConfig, content: strin
     if (!config?.botToken || !config?.chatId) return
 
     const emoji = getTelegramEmoji(level)
-    const message = `${emoji}\n\`\`\`\n${content}\n\`\`\``
+    const message = `${emoji}\n${content}`
 
     const url = `https://api.telegram.org/bot${config.botToken}/sendMessage`
 
@@ -41,23 +41,37 @@ export async function sendTelegram(config: WebhookTelegramConfig, content: strin
         data: {
             chat_id: config.chatId,
             text: message,
-            parse_mode: 'MarkdownV2',
             disable_notification: level === 'debug'
         },
         timeout: 10000
     }
 
-    await telegramQueue.add(async () => {
-        try {
-            await httpRequest(request)
-        } catch (err) {
-            const status = (err as { response?: { status?: number } })?.response?.status
-
-            if (status === 429 || status === 401 || status === 403) return
-        }
-    })
+    for (const part of splitTelegramMessage(message)) {
+        await telegramQueue.add(async () => {
+            try {
+                await httpRequest({ ...request, data: { ...(request.data as object), text: part } })
+            } catch {
+                // Never log the request URL: it contains the bot token.
+                console.error('[TELEGRAM] Notification delivery failed; see local run report.')
+            }
+        })
+    }
 }
 
 export function flushTelegramQueue(timeoutMs = 5000): Promise<void> {
     return flushQueue(telegramQueue, timeoutMs)
+}
+
+export function splitTelegramMessage(message: string): string[] {
+    const chunks: string[] = []
+    let chunk = ''
+    for (const character of message) {
+        if (chunk.length + character.length > 3500) {
+            chunks.push(chunk)
+            chunk = ''
+        }
+        chunk += character
+    }
+    if (chunk) chunks.push(chunk)
+    return chunks
 }

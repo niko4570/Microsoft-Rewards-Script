@@ -192,7 +192,9 @@ export class PunchCards extends BaseActivity {
                 await this.reportQuestChild(child, parentId)
             }
 
-            reported += 1
+            const refreshedChildren = await this.getQuestChildren(parentId, title)
+            if (refreshedChildren?.find(item => item.offerId === child.offerId)?.isCompleted) reported += 1
+            else remaining += 1
             await this.bot.utils.wait(this.bot.utils.randomDelay(5000, 15000))
         }
 
@@ -200,7 +202,7 @@ export class PunchCards extends BaseActivity {
         this.bot.logger.info(
             this.bot.isMobile,
             'PUNCHCARD',
-            `Quest "${title}" ${remaining === 0 ? 'COMPLETE' : 'in progress'} | reported=${reported}` +
+            `Quest "${title}" ${remaining === 0 ? 'processed; completion requires verification' : 'in progress'} | reported=${reported}` +
                 `${remaining ? ` | remaining=${remaining}` : ''} | pointsGained=${gained}` +
                 ` | currentBalance=${this.bot.userData.currentPoints}` +
                 `${parent.pointProgressMax > 0 ? ` | targetPoints=${parent.pointProgressMax}` : ''}`,

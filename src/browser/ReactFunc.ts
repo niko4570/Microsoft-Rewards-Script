@@ -7,6 +7,9 @@ export interface ParsedOffer {
     description: string
     points: number
     promotionSubtype: string | null
+    promotionType?: string | null
+    name?: string | null
+    priority?: number
     destination: string
     isCompleted: boolean
     isPromotional: boolean
@@ -65,11 +68,13 @@ export interface AccountState {
 }
 
 export interface PageSnapshot {
+    nextStreakResetAt?: string | null
     offers: ParsedOffer[]
     reportable: ParsedOffer[]
     streaks: StreakState[]
     streakProtection: StreakProtectionState | null
     account: AccountState
+    warnings?: string[]
 }
 
 export default class ReactFunc {
@@ -96,15 +101,29 @@ export default class ReactFunc {
         )
 
         return {
+            nextStreakResetAt: this.parseStreakReset(combined),
             offers,
             reportable: offers.filter(o => o.reportable),
             streaks,
             streakProtection,
-            account
+            account,
+            warnings: this.extractObjects(combined, '"userWarnings"')
+                .flatMap(object => (Array.isArray(object.userWarnings) ? object.userWarnings : []))
+                .map(warning => warning?.name)
+                .filter((name): name is string => typeof name === 'string')
         }
     }
     public getStreakProtection(html: string): StreakProtectionState | null {
         return this.parseStreakProtection(this.concatFlightChunks(html))
+    }
+
+    private parseStreakReset(combined: string): string | null {
+        const timers = this.extractObjects(combined, '"expiresAt"')
+            .filter(timer => typeof timer.prefix === 'string' && /daily streaks|每日连胜|每日連勝/i.test(timer.prefix))
+            .map(timer => (typeof timer.expiresAt === 'string' ? Date.parse(timer.expiresAt.replace(/^\$D/, '')) : NaN))
+            .filter(time => Number.isFinite(time) && time > Date.now())
+        // Other countdowns (monthly offers, coupons) must never control daily tasks.
+        return timers.length ? new Date(Math.min(...timers)).toISOString() : null
     }
 
     public buildId(html: string): string | null {
@@ -298,6 +317,9 @@ export default class ReactFunc {
                     description: (obj.description as string) ?? '',
                     points: (obj.points as number) ?? (obj.pointProgressMax as number) ?? 0,
                     promotionSubtype: (obj.promotionSubtype as string | null) ?? null,
+                    promotionType: typeof obj.promotionType === 'string' ? obj.promotionType : null,
+                    name: typeof obj.name === 'string' ? obj.name : null,
+                    priority: typeof obj.priority === 'number' ? obj.priority : undefined,
                     destination: (obj.destination as string) ?? (obj.destinationUrl as string) ?? '',
                     isCompleted,
                     isPromotional,
@@ -320,6 +342,9 @@ export default class ReactFunc {
                 existing.description ||= candidate.description
                 existing.points ||= candidate.points
                 existing.promotionSubtype ??= candidate.promotionSubtype
+                existing.promotionType ??= candidate.promotionType
+                existing.name ??= candidate.name
+                existing.priority ??= candidate.priority
                 existing.destination ||= candidate.destination
                 existing.isCompleted ||= candidate.isCompleted
                 existing.isPromotional ||= candidate.isPromotional
@@ -461,13 +486,22 @@ export default class ReactFunc {
 
             // availablePoints renders in a separate header object
             const header = this.extractObjects(combined, '"availablePoints"').find(o => 'availablePoints' in o) ?? {}
+            // The current /earn header serializes { balance, level } instead of availablePoints.
+            const balanceHeader =
+                this.extractObjects(combined, '"balance"').find(
+                    object => typeof object.balance === 'number' && typeof object.level === 'number'
+                ) ?? {}
 
             const account: AccountState = {
-                level: (membership.level as number) ?? null,
+                level: (membership.level as number) ?? (balanceHeader.level as number) ?? null,
                 pointsProgress: (membership.pointsProgress as number) ?? null,
                 pointsRemaining: (membership.pointsRemaining as number) ?? null,
                 lifetimeEarn: (membership.lifetimeEarn as number) ?? null,
-                availablePoints: (header.availablePoints as number) ?? (membership.availablePoints as number) ?? null
+                availablePoints:
+                    (header.availablePoints as number) ??
+                    (membership.availablePoints as number) ??
+                    (balanceHeader.balance as number) ??
+                    null
             }
 
             this.bot.logger.debug(
@@ -787,6 +821,8 @@ export default class ReactFunc {
 
     private normaliseDate(rawDate: string | undefined): string | null {
         if (!rawDate) return null
+        const iso = rawDate.match(/^(\d{4}-\d{2}-\d{2})(?:T|$)/)
+        if (iso) return iso[1] ?? null
         const m = rawDate.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
         if (!m) return null
         return `${m[3]}-${m[1]}-${m[2]}`

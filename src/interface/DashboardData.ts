@@ -1,4 +1,6 @@
 export interface DashboardData {
+    source?: 'earn-page'
+    availablePointsKnown?: boolean
     dashboard: Dashboard
     status: Status
     catalog: Catalog
@@ -234,8 +236,6 @@ export interface BasePromotion<
     programRestructureWave2HvaFlight: PromotionText
     programRestructureHvaSevenDayLink: PromotionText
 }
-
-export type AnyPromotion = BasePromotion
 
 export type Ion = BasePromotion<BadgesImpressionAttributes>
 

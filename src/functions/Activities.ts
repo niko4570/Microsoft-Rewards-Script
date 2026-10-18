@@ -50,7 +50,7 @@ export default class Activities {
     }
 
     doSearchOnBing = async (promotion: BasePromotion, page: Page): Promise<void> => {
-        if (this.bot.config.experimental.apiSearchOnBing) {
+        if (!this.bot.config.tasksOnly && this.bot.config.experimental.apiSearchOnBing) {
             await new ApiSearchOnBing(this.bot).doSearchOnBing(promotion)
             return
         }
@@ -113,9 +113,9 @@ export default class Activities {
         await readToEarn.doReadToEarn()
     }
 
-    doDailyCheckIn = async (): Promise<void> => {
+    doDailyCheckIn = async () => {
         const dailyCheckIn = new DailyCheckIn(this.bot)
-        await dailyCheckIn.doDailyCheckIn()
+        return dailyCheckIn.doDailyCheckIn()
     }
 
     doAppPromotions = async (data: AppDashboardData): Promise<void> => {

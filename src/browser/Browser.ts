@@ -90,6 +90,7 @@ class Browser {
 
             browser = await rebrowser.chromium.launch({
                 headless,
+                ...(process.env.MRS_DATA_DIR ? { channel: 'chromium' } : {}),
                 ...(proxyConfig && { proxy: proxyConfig }),
                 args: [...Browser.BROWSER_ARGS, ...sandboxArgs, ...certArgs]
             })

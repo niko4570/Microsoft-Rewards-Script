@@ -6,11 +6,6 @@ import { flushQueue } from './Queue'
 
 const DISCORD_LIMIT = 2000
 
-export interface DiscordConfig {
-    enabled?: boolean
-    url: string
-}
-
 const discordQueue = new PQueue({
     interval: 1000,
     intervalCap: 2,

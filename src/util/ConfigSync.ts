@@ -31,6 +31,7 @@ function resolveProjectFile(filename: string, projectRoot: string): string | und
 }
 
 export function resolveConfigPath(projectRoot: string = getProjectRoot()): string {
+    if (process.env.MRS_DATA_DIR) return path.resolve(process.env.MRS_DATA_DIR, 'config.json')
     return resolveProjectFile('config.json', projectRoot) ?? path.join(projectRoot, 'config.json')
 }
 
