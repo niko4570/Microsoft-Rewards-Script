@@ -41,6 +41,16 @@ jobs:
             - run: npm run build --prefix desktop
             - run: npm run test:ui --prefix desktop
             - run: npm run package:win --prefix desktop
+            - name: Verify installed app without development tools on PATH
+              shell: pwsh
+              run: ./desktop/build/installed-smoke.ps1
+            - name: Upload installed UI evidence
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: rewards-desktop-installed-smoke
+                  path: desktop/release/installed-smoke.png
+                  if-no-files-found: ignore
             - name: Corresponding source snapshot
               run: git archive --format=zip --output=desktop/release/rewards-desktop-source.zip HEAD
             - name: Include source checksum

@@ -140,7 +140,13 @@ execution, `desktop-v*` tags, and relevant pull requests. Successful builds uplo
 installers, portable archives, corresponding source, checksums, and this guide as
 CI artifacts. Matching `desktop-vX.Y.Z` tag builds also publish a GitHub Release
 after packaging succeeds; manual and pull-request builds produce artifacts only.
-The workflow does not execute real account tasks. See the publishing steps below.
+The workflow also silently installs the NSIS package into a fresh directory on
+the disposable Windows runner and checks the installed runtime and UI with Node.js,
+npm, Git and Docker removed from the application PATH. It uploads an installed UI
+screenshot separately. This checks bundled dependencies on a hosted development
+image; it does not establish acceptance on a Windows image with no developer tools
+installed. The workflow does not execute real account tasks or interactive
+Microsoft login. See the publishing steps below.
 
 ## Validation and known limits
 
@@ -164,9 +170,11 @@ Microsoft backend cause of the initial unconfirmed check-in.
 （含模拟更新下载与校验）。这些结果来自 Linux/WSL 检查，不替代当前版本的
 Windows 安装包和真实 Release 更新链路验收。
 
-Clean-machine installation, upgrade/rollback, long-running sleep/startup behavior,
-the real GitHub Release update/download/install flow, and independent first-time
-user acceptance remain to be checked. The preview
+无人值守运行（Windows 开机启动、休眠唤醒、断网恢复及跨日调度）已验证（用户确认），不再列为待验收项。
+
+Clean-machine installation, upgrade/rollback, the real GitHub Release
+update/download/install flow, and independent first-time user acceptance remain
+to be checked. The preview
 supports a limited account/region scope and does not guarantee task completion,
 point credit, or future compatibility with Microsoft service changes.
 
