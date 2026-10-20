@@ -26,8 +26,6 @@ try {
     $npmCli = Join-Path $nodeDirectory 'node_modules/npm/bin/npm-cli.js'
     $env:Path = $nodeDirectory + ';' + $savedPath
     $env:npm_config_cache = Join-Path $buildRoot 'npm-cache'
-    $env:ELECTRON_CACHE = Join-Path $buildRoot 'electron-cache'
-    $env:ELECTRON_BUILDER_CACHE = Join-Path $buildRoot 'builder-cache'
     $env:MRS_DESKTOP_NODE = $node
     Set-Location $checkout
     # Archive the clean allowlisted snapshot, never a checkout with dependencies.
@@ -37,6 +35,7 @@ try {
         & $node $npmCli @Arguments
         if ($LASTEXITCODE -ne 0) { throw ('npm failed: ' + ($Arguments -join ' ')) }
     }
+    if (-not (Get-Command cargo.exe -ErrorAction SilentlyContinue)) { throw 'Install Rust stable (MSVC), Visual Studio C++ Build Tools and WebView2 before building Tauri.' }
     Invoke-Npm @('ci', '--no-audit', '--no-fund')
     Invoke-Npm @('run', 'build')
     Invoke-Npm @('run', 'lint')
@@ -46,7 +45,7 @@ try {
     Invoke-Npm @('ci', '--prefix', 'desktop', '--no-audit', '--no-fund')
     Invoke-Npm @('test', '--prefix', 'desktop')
     Invoke-Npm @('run', 'build', '--prefix', 'desktop')
-    Invoke-Npm @('run', 'test:ui', '--prefix', 'desktop')
+    Invoke-Npm @('run', 'test:native', '--prefix', 'desktop')
     Invoke-Npm @('run', 'package:win', '--prefix', 'desktop')
     Copy-Item (Join-Path $buildRoot 'rewards-desktop-source.zip') (Join-Path $checkout 'desktop/release/rewards-desktop-source.zip')
     & $node (Join-Path $checkout 'desktop/build/checksums.mjs')

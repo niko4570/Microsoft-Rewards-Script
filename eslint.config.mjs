@@ -14,7 +14,9 @@ export default tseslint.config(
             'desktop/runtime/**',
             'desktop/release/**',
             'desktop/windows-source/**',
-            'desktop/browser-cache/**'
+            'desktop/browser-cache/**',
+            'desktop/src-tauri/target/**',
+            'desktop/src-tauri/gen/**'
         ]
     },
     js.configs.recommended,

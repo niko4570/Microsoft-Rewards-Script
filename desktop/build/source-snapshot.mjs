@@ -15,7 +15,12 @@ fs.mkdirSync(destination, { recursive: true })
 const files = [...new Set(listing.stdout.split('\0').filter(Boolean))]
 for (const name of files) {
     if (/^(config|sessions|reports|diagnostics|node_modules|dist)\//.test(name)) continue
-    if (/^desktop\/(windows-source|runtime|release|out|node_modules|browser-cache)\//.test(name)) continue
+    if (
+        /^desktop\/(windows-source|runtime|release|out|node_modules|browser-cache|src-tauri\/target|src-tauri\/gen)\//.test(
+            name
+        )
+    )
+        continue
     if (/^(?:.*\/)?(?:\.env(?:\..*)?|config\.json|accounts\.(?:dev|main)\.json)$/.test(name)) continue
     const source = path.join(root, name)
     if (!fs.existsSync(source) || !fs.lstatSync(source).isFile()) continue

@@ -1,3 +1,4 @@
+import './bridge'
 import { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { Settings, Snapshot } from './types'

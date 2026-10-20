@@ -172,7 +172,7 @@ export class DesktopService extends EventEmitter {
         return this.exclusive('saving', async () => {
             await this.ensureIdle()
             const previous = this.settings
-            this.setAutoStart(next.startOnLogin)
+            await this.setAutoStart(next.startOnLogin)
             try {
                 fs.copyFileSync(
                     path.join(this.dataDirectory, 'desktop.json'),
@@ -180,7 +180,7 @@ export class DesktopService extends EventEmitter {
                 )
                 atomicJson(path.join(this.dataDirectory, 'desktop.json'), next)
             } catch (error) {
-                this.setAutoStart(previous.startOnLogin)
+                await this.setAutoStart(previous.startOnLogin)
                 throw error
             }
             this.settings = next
@@ -325,7 +325,7 @@ export class DesktopService extends EventEmitter {
         return this.exclusive('clearing', async () => {
             await this.ensureIdle()
             await this.backend.close()
-            this.setAutoStart(false)
+            await this.setAutoStart(false)
             // Fixed application-owned entries only; never follow an arbitrary UI path.
             for (const name of [
                 'sessions',

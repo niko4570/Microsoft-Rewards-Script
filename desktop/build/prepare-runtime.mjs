@@ -38,6 +38,8 @@ for (const name of fs.readdirSync(path.join(root, 'scripts/api'))) {
     if (name.endsWith('.js') && !name.endsWith('.test.js'))
         fs.copyFileSync(path.join(root, 'scripts/api', name), path.join(runtime, 'scripts/api', name))
 }
+fs.cpSync(path.join(desktop, 'lib'), path.join(runtime, 'desktop/lib'), { recursive: true })
+fs.copyFileSync(path.join(desktop, 'host.mjs'), path.join(runtime, 'desktop/host.mjs'))
 fs.copyFileSync(process.execPath, path.join(runtime, 'node.exe'))
 const npmCli = process.env.npm_execpath
 if (!npmCli || !fs.existsSync(npmCli)) throw new Error('请通过 npm run prepare:runtime 执行，以定位 npm CLI')

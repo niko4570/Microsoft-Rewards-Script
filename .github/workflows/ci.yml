@@ -22,9 +22,6 @@ jobs:
             fail-fast: false
             matrix:
                 os: [ubuntu-latest, windows-latest]
-        env:
-            # Unit/integration tests mock browser launches; UI checks run separately.
-            ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
         steps:
             - name: Check out repository
               uses: actions/checkout@v4

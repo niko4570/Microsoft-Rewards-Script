@@ -1,0 +1,8 @@
+{
+    "bundle": {
+        "resources": {
+            "../runtime/": "backend/",
+            "../../LICENSE": "LICENSE"
+        }
+    }
+}

@@ -28,7 +28,7 @@ try {
 
     # The harness uses its absolute Node path; the installed app only sees OS tools.
     # Hosted images also install Docker in System32. Expose only the OS commands
-    # needed by Chromium/Electron cleanup, rather than that whole directory.
+    # needed by Chromium cleanup, rather than that whole directory.
     $systemTools = Join-Path $env:RUNNER_TEMP ('Rewards system tools-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $systemTools | Out-Null
     foreach ($tool in @('cmd.exe', 'taskkill.exe')) {
@@ -56,7 +56,7 @@ try {
     $executable = Join-Path $installDirectory 'Rewards Desktop.exe'
     if (-not (Test-Path $executable)) { throw 'Installed application executable is missing.' }
 
-    & $node (Join-Path $PSScriptRoot 'smoke-runtime.mjs') (Join-Path $installDirectory 'resources/backend')
+    & $node (Join-Path $PSScriptRoot 'smoke-runtime.mjs') (Join-Path $installDirectory 'backend')
     if ($LASTEXITCODE -ne 0) { throw 'Installed runtime check failed.' }
     $env:MRS_PACKAGED_EXECUTABLE = $executable
     New-Item -ItemType Directory -Path (Join-Path $desktop 'release') -Force | Out-Null

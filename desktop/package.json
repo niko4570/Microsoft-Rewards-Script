@@ -1,82 +1,35 @@
 {
     "name": "rewards-desktop",
     "productName": "Rewards Desktop",
-    "version": "0.1.9",
+    "version": "0.2.0",
     "description": "Windows desktop companion for Microsoft Rewards Script",
     "author": "Microsoft Rewards Script contributors",
     "license": "GPL-3.0-or-later",
     "private": true,
     "type": "module",
-    "main": "main.mjs",
     "scripts": {
         "build": "tsc --noEmit && vite build",
-        "start": "npm run build && electron .",
+        "start": "npm run build && tauri dev --no-watch --no-dev-server",
         "test": "node --test --test-isolation=none --test-concurrency=1 test/*.test.mjs",
         "test:ui": "node build/ui-smoke.mjs",
         "test:packaged": "node build/packaged-smoke.mjs",
         "prepare:runtime": "node build/prepare-runtime.mjs",
         "smoke:runtime": "node build/smoke-runtime.mjs",
-        "package:win": "npm run build && npm run prepare:runtime && npm run smoke:runtime && electron-builder --win --x64 --publish never && npm run test:packaged && node build/checksums.mjs"
+        "package:win": "node build/package-tauri.mjs",
+        "tauri": "tauri",
+        "test:native": "cargo test --manifest-path src-tauri/Cargo.toml --locked",
+        "check:native": "cargo check --manifest-path src-tauri/Cargo.toml --locked"
     },
     "devDependencies": {
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
-        "electron": "^40.0.0",
-        "electron-builder": "^26.0.0",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
         "typescript": "^6.0.0",
-        "vite": "^7.0.0"
+        "vite": "^7.0.0",
+        "@tauri-apps/cli": "^2.0.0"
     },
-    "build": {
-        "appId": "org.microsoftrewardsscript.desktop",
-        "productName": "Rewards Desktop",
-        "asar": true,
-        "directories": {
-            "output": "release"
-        },
-        "files": [
-            "main.mjs",
-            "preload.cjs",
-            "lib/**",
-            "out/**",
-            "assets/icon.png",
-            "package.json"
-        ],
-        "extraResources": [
-            {
-                "from": "runtime",
-                "to": "backend"
-            },
-            {
-                "from": "runtime/node_modules",
-                "to": "backend/node_modules",
-                "filter": [
-                    "**/*"
-                ]
-            },
-            {
-                "from": "../LICENSE",
-                "to": "LICENSE"
-            }
-        ],
-        "win": {
-            "target": [
-                "nsis",
-                "zip"
-            ],
-            "icon": "assets/icon.png",
-            "signAndEditExecutable": true
-        },
-        "artifactName": "Rewards-Desktop-${version}-${arch}.${ext}",
-        "nsis": {
-            "oneClick": false,
-            "perMachine": false,
-            "allowElevation": false,
-            "allowToChangeInstallationDirectory": true,
-            "deleteAppDataOnUninstall": false,
-            "createDesktopShortcut": true,
-            "shortcutName": "Rewards Desktop"
-        }
+    "dependencies": {
+        "@tauri-apps/api": "^2.0.0"
     }
 }

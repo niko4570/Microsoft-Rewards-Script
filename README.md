@@ -37,6 +37,8 @@
 
 [完整的 Windows 使用、升级与故障诊断说明](docs/windows-desktop.md)
 
+> **开发中：Tauri 0.2.0 外壳迁移。** 当前工作区使用系统 WebView2 显示界面，保留 Node 和自动化 Chromium；关闭窗口释放 WebView，托盘继续调度。已发布的 0.1.9 仍为 Electron 版。构建要求、数据兼容和验证边界见 [迁移说明](docs/windows-desktop.md#tauri-020-migration-unreleased)。
+
 ## 其他使用方式与文档
 
 - **Windows 桌面版**：[使用指南与验证范围](docs/windows-desktop.md)

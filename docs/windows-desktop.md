@@ -4,7 +4,7 @@ Rewards Desktop 是本仓库基于 [TheNetsky/Microsoft-Rewards-Script](https://
 
 应用内置 Node.js 和 Chromium，使用时无需安装 Git、Node.js、Docker 或 WSL。已验证环境为 Windows 11 x64；其他 Windows 版本、其他地区与多账号桌面使用尚未完成验证。
 
-当前桌面版本为 **0.1.9**。请从 GitHub Release 的 **Assets** 下载发布文件。
+当前已发布桌面版本为 **0.1.9**；工作区正在迁移到 **0.2.0 Tauri / WebView2**，尚未发布，旧版验收不代表新外壳已验收。请从 GitHub Release 的 **Assets** 下载发布文件。
 
 ## 下载与首次运行
 
@@ -119,9 +119,10 @@ log parsing, scheduling, and desktop service/updater tests. New runs cancel olde
 runs for the same event and branch or pull request. The Linux job also runs the
 Docker shell scheduler integration that is skipped on Windows.
 
-These checks do not need Microsoft credentials or real browser sessions. Electron
-binary downloads are skipped because these tests mock browser launches; actual UI,
-Windows packaging and installer checks remain in the separate Windows workflows.
+These checks do not need Microsoft credentials or real browser sessions. Native
+Rust compilation/tests, actual WebView2 UI, Windows packaging and installer checks
+run in the separate Windows workflow. Backend integration tests use isolated data
+and local authenticated API ports.
 The existing formatting workflow checks pull requests separately.
 
 After this workflow is pushed, its results appear under **Actions → CI** and in
@@ -131,7 +132,10 @@ status checks in GitHub branch protection or rulesets.
 
 ## Build from source
 
-Use Node.js 24 and install root and desktop dependencies separately:
+Use Node.js 24 and install root and desktop dependencies separately. To build or
+launch the native shell on Windows, also install Rust stable with the MSVC target,
+Visual Studio C++ Build Tools (Desktop development with C++ and Windows SDK), and
+WebView2 Evergreen Runtime. End users do not need Rust or Node.js.
 
 ```bash
 npm ci
@@ -147,15 +151,18 @@ $env:MRS_DESKTOP_NODE = (Get-Command node.exe).Source
 npm run desktop:start
 ```
 
-Build Windows distributions on Windows x64 with Node.js 24:
+Check the native shell and build Windows distributions on Windows x64:
 
 ```powershell
+npm run test:native --prefix desktop
 npm run desktop:package
 ```
 
 Packaging prepares Windows production dependencies and one full Chromium bundle,
 checks visible and headless browser startup, validates the isolated backend API,
-and tests the packaged UI. Linux/WSL dependencies cannot be copied into a Windows
+builds a Tauri NSIS installer and portable ZIP, and tests the packaged WebView2 UI.
+The installer downloads the shared Evergreen WebView2 Runtime only if missing.
+Portable users must already have WebView2 Runtime installed. Linux/WSL dependencies cannot be copied into a Windows
 release. Build resources exclude local config, credentials, sessions, and reports.
 
 The **Windows desktop test package** GitHub Actions workflow supports manual
@@ -171,7 +178,52 @@ image; it does not establish acceptance on a Windows image with no developer too
 installed. The workflow does not execute real account tasks or interactive
 Microsoft login. See the publishing steps below.
 
-## Validation and known limits
+## Tauri 0.2.0 migration (unreleased)
+
+The React interface uses `src/bridge.ts` to call a narrow Rust command. The native
+shell owns windows, tray, single-instance handling, autostart, dialogs and file
+opening. `host.mjs` runs the existing Node service/scheduler over private
+stdin/stdout JSON messages, retaining the authenticated loopback task API.
+Renderer code receives neither its token nor unrestricted filesystem/process APIs.
+
+Closing the window destroys the WebView; the tray and Node scheduler remain.
+Opening the tray recreates the UI and reads a fresh snapshot. Quit stops the Node
+service, API, login/inspection/task processes. On Windows, a kill-on-close Job
+Object also covers abrupt shell termination. A clock-gap check resets scheduling
+after sleep; server reset reservations remain in the existing scheduler state.
+
+Data remains in `%APPDATA%\Rewards Desktop`, including `desktop.json`, sessions,
+reports and `schedule-state.json`. The WebView's own cache is separate. For the
+first Electron-to-Tauri upgrade, quit the old app from its tray and back up this
+data directory. Uninstall the old application while preserving its data before
+installing Tauri; do not run the two shells or another account scheduler together.
+The new installer need not select the old Electron installation directory.
+
+`npm run test:ui --prefix desktop` checks a previously built native executable.
+The Windows package command runs it against the portable app, and the installer
+workflow repeats it against the installed app without development tools on PATH.
+The harness enables WebView2 CDP only through its test process environment; it
+checks real API connection, settings persistence, argument rejection, destroying
+and reopening a window, single-instance behavior and graceful exit. Update
+selection/download/checksum behavior is covered by Node tests, without a real
+release download or a mocked native UI dialog.
+
+Local migration validation on October 20, 2026 passed:
+
+- Frontend build and repository ESLint.
+- 37 desktop tests, 48 task/dashboard/OAuth tests, and 17 log/scheduler tests.
+- Windows GNU target compilation, including the native resources.
+- A Windows WebView2 UI smoke test using a cross-compiled shell and isolated
+  temporary data: real backend connection, settings, window destruction/recreation,
+  single instance and graceful exit. This reused the Windows Node/dependency
+  runtime from the local 0.1.9 artifact; it did not exercise a new NSIS installer.
+
+The full Windows MSVC/NSIS pipeline and real-account login/task, sleep/resume,
+autostart, update and Electron-to-Tauri upgrade acceptance still need to run for
+this shell. The following results concern the old Electron releases and must not
+be treated as Tauri acceptance.
+
+## Historical validation and known limits
 
 The October 18, 2026 Windows build of 0.1.8 passed:
 
@@ -209,12 +261,13 @@ point credit, or future compatibility with Microsoft service changes.
 ## License
 
 This fork retains GPL-3.0-or-later. Distributions include the project license,
-Node.js license, backend dependency notices, Electron notices, and renderer
-licenses. Provide the corresponding source archive alongside binary releases.
+Node.js license, backend dependency notices, Rust/Tauri dependency notices and
+license files, and renderer licenses. Provide the corresponding source archive alongside binary releases.
 
 ## Publish desktop updates
 
-1. Set `desktop/package.json` and its lockfile to the new desktop version. Update
+1. Set `desktop/package.json`, its lockfile and `desktop/src-tauri/Cargo.toml` /
+   `Cargo.lock` to the new desktop version. Update
    this guide, the README download instructions and the desktop changelog.
 2. Commit all release changes, including new files and workflow changes, and run
    the Windows validation/package workflow for that commit. Resolve the remaining

@@ -1,3 +1,11 @@
+# 0.2.0 — 开发中，尚未发布
+
+- 将 Electron 外壳替换为 Tauri 2 / Windows WebView2 Evergreen，复用 React 界面和 Node 任务核心。
+- 关闭窗口销毁 WebView，托盘继续运行；再次打开时恢复设置和后台状态。
+- 保留原用户数据目录、登录入口、服务端周期调度、报告、诊断与更新校验。
+- 使用私有管道连接桌面管理进程，Windows Job Object 回收异常退出后的后台进程树。
+- 更新 Windows NSIS / 便携打包与 WebView2 冒烟检查；Windows 和真实账号验收仍需重新执行。
+
 # Rewards Desktop changelog
 
 ## 0.1.9 — 2026-10-20

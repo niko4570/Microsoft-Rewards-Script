@@ -28,6 +28,10 @@ jobs:
               run: |
                   $version = node -p "require('./desktop/package.json').version"
                   if ($env:GITHUB_REF_NAME -ne "desktop-v$version") { throw "Desktop tag must match desktop/package.json version" }
+            - uses: dtolnay/rust-toolchain@stable
+            - uses: Swatinem/rust-cache@v2
+              with:
+                  workspaces: desktop/src-tauri
             - run: npm ci
             - run: npm run build
             - run: npm run lint
@@ -39,7 +43,7 @@ jobs:
             - run: npm ci --prefix desktop
             - run: npm test --prefix desktop
             - run: npm run build --prefix desktop
-            - run: npm run test:ui --prefix desktop
+            - run: npm run test:native --prefix desktop
             - run: npm run package:win --prefix desktop
             - name: Verify installed app without development tools on PATH
               shell: pwsh
