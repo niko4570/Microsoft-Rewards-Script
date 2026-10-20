@@ -5,13 +5,18 @@ on:
         branches: ['**']
     pull_request:
     workflow_dispatch:
+    workflow_call:
+        inputs:
+            ref:
+                type: string
+                default: ''
 
 permissions:
     contents: read
 
 concurrency:
-    group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-    cancel-in-progress: true
+    group: ci-${{ inputs.ref != '' && 'release' || 'standalone' }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+    cancel-in-progress: ${{ inputs.ref == '' }}
 
 jobs:
     checks:
@@ -25,6 +30,8 @@ jobs:
         steps:
             - name: Check out repository
               uses: actions/checkout@v4
+              with:
+                  ref: ${{ inputs.ref || github.sha }}
             - name: Set up Node.js
               uses: actions/setup-node@v4
               with:
@@ -37,6 +44,8 @@ jobs:
               run: npm ci
             - name: Install desktop dependencies
               run: npm ci --prefix desktop
+            - name: Test release planning
+              run: node --test scripts/release/*.test.mjs
             - name: Check code quality
               run: npm run lint
             - name: Build backend and test tasks, dashboard and OAuth

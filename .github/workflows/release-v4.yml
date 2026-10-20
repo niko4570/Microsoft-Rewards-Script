@@ -1,0 +1,91 @@
+name: Publish v4 updates
+
+on:
+    push:
+        branches: [v4]
+        paths-ignore: ['**/*.md', 'docs/**', 'LICENSE']
+    workflow_dispatch:
+
+# Serialize version reservations and publication; never interrupt a release.
+concurrency:
+    group: publish-v4
+    cancel-in-progress: false
+
+permissions:
+    contents: read
+
+jobs:
+    plan:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        outputs:
+            desktop: ${{ steps.plan.outputs.desktop }}
+            docker: ${{ steps.plan.outputs.docker }}
+            desktop_tag: ${{ steps.plan.outputs.desktop_tag }}
+            docker_tag: ${{ steps.plan.outputs.docker_tag }}
+            docker_version: ${{ steps.plan.outputs.docker_version }}
+            sha: ${{ steps.commit.outputs.sha }}
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  ref: v4
+                  fetch-depth: 0
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: '24'
+            - name: Read published stable releases (exclude pending drafts)
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' > "$RUNNER_TEMP/published-tags.txt"
+            - name: Plan component releases since their last tags
+              id: plan
+              env:
+                  PUBLISHED_TAGS_FILE: ${{ runner.temp }}/published-tags.txt
+              run: node scripts/release/plan.mjs
+            - name: Reserve consistent package and native versions
+              id: commit
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  git config user.name 'github-actions[bot]'
+                  git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+                  git add package.json package-lock.json desktop/package.json desktop/package-lock.json desktop/src-tauri/Cargo.toml desktop/src-tauri/Cargo.lock
+                  if ! git diff --cached --quiet; then
+                    git commit -m 'chore(release): reserve automatic versions [skip ci]'
+                    # A concurrent human push causes a safe failure, never a force push.
+                    git push origin HEAD:refs/heads/v4
+                  fi
+                  echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+    checks:
+        needs: plan
+        if: needs.plan.outputs.desktop == 'true' || needs.plan.outputs.docker == 'true'
+        uses: ./.github/workflows/ci.yml
+        with:
+            ref: ${{ needs.plan.outputs.sha }}
+
+    desktop:
+        needs: [plan, checks]
+        if: needs.plan.outputs.desktop == 'true'
+        permissions:
+            contents: write
+        uses: ./.github/workflows/desktop-windows.yml
+        with:
+            ref: ${{ needs.plan.outputs.sha }}
+            release-tag: ${{ needs.plan.outputs.desktop_tag }}
+
+    docker:
+        needs: [plan, checks]
+        if: needs.plan.outputs.docker == 'true'
+        permissions:
+            contents: write
+            packages: write
+        uses: ./.github/workflows/docker-publish.yml
+        with:
+            ref: ${{ needs.plan.outputs.sha }}
+            tag: ${{ needs.plan.outputs.docker_tag }}
+            version: ${{ needs.plan.outputs.docker_version }}

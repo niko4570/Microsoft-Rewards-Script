@@ -2,7 +2,7 @@
 
 本项目是基于 [TheNetsky/Microsoft-Rewards-Script](https://github.com/TheNetsky/Microsoft-Rewards-Script) 扩展的 **fork**，在上游 Microsoft Rewards 自动化脚本的基础上，增加了中文 Windows 桌面应用 **Rewards Desktop**，并针对中国区域单账号的日常任务流程做了适配。
 
-**Windows 用户可以直接下载安装包使用，无需安装 Git、Node.js、Docker 或 WSL。** 当前桌面版本为 **0.1.9**，已验证环境为 Windows 11 x64。安装程序和便携包均在 GitHub Release 的 **Assets** 中提供。
+**Windows 用户可以直接下载安装包使用，无需安装 Git、Node.js、Docker 或 WSL。** 桌面最新版请以发布页为准；已验证环境为 Windows 11 x64。安装程序和便携包均在 GitHub Release 的 **Assets** 中提供。
 
 ## 项目来源与扩展
 
@@ -13,10 +13,10 @@
 
 ## Windows 下载
 
-前往 [Rewards Desktop 0.1.9 发布页](https://github.com/niko4570/Microsoft-Rewards-Script/releases/tag/desktop-v0.1.9)，展开 **Assets** 下载：
+前往 [Rewards Desktop 最新发布页](https://github.com/niko4570/Microsoft-Rewards-Script/releases/latest)，展开 **Assets** 下载：
 
-- `Rewards-Desktop-0.1.9-x64.exe`：推荐安装版。
-- `Rewards-Desktop-0.1.9-x64.zip`：便携版，解压后运行 `Rewards Desktop.exe`。
+- `Rewards-Desktop-X.Y.Z-x64.exe`：推荐安装版。
+- `Rewards-Desktop-X.Y.Z-x64.zip`：便携版，解压后运行 `Rewards Desktop.exe`。
 - `SHA256SUMS.txt`：发布文件的 SHA-256 校验值。
 - `rewards-desktop-source.zip`：该版本的对应源码，用于查看或自行构建。
 

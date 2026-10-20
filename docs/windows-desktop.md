@@ -4,14 +4,14 @@ Rewards Desktop 是本仓库基于 [TheNetsky/Microsoft-Rewards-Script](https://
 
 应用内置 Node.js 和 Chromium，使用时无需安装 Git、Node.js、Docker 或 WSL。已验证环境为 Windows 11 x64；其他 Windows 版本、其他地区与多账号桌面使用尚未完成验证。
 
-当前已发布桌面版本为 **0.1.9**；工作区正在迁移到 **0.2.0 Tauri / WebView2**，尚未发布，旧版验收不代表新外壳已验收。请从 GitHub Release 的 **Assets** 下载发布文件。
+桌面最新版以 [最新发布页](https://github.com/niko4570/Microsoft-Rewards-Script/releases/latest) 为准。0.2.0 起使用 Tauri / WebView2；旧版 Electron 的人工验收不代表新外壳已完成同样验收。请从 GitHub Release 的 **Assets** 下载发布文件。
 
 ## 下载与首次运行
 
-打开 [0.1.9 发布页](https://github.com/niko4570/Microsoft-Rewards-Script/releases/tag/desktop-v0.1.9)，在 **Assets** 中选择：
+打开 [桌面最新发布页](https://github.com/niko4570/Microsoft-Rewards-Script/releases/latest)，在 **Assets** 中选择：
 
-- **推荐安装版**：`Rewards-Desktop-0.1.9-x64.exe`，下载后按向导安装。
-- **便携版**：`Rewards-Desktop-0.1.9-x64.zip`，解压到单独目录后运行 `Rewards Desktop.exe`。
+- **推荐安装版**：`Rewards-Desktop-X.Y.Z-x64.exe`，下载后按向导安装。
+- **便携版**：`Rewards-Desktop-X.Y.Z-x64.zip`，解压到单独目录后运行 `Rewards Desktop.exe`。
 - **校验文件**：`SHA256SUMS.txt`；**对应源码**：`rewards-desktop-source.zip`。
 
 后续版本请查看本仓库的 [Releases](https://github.com/niko4570/Microsoft-Rewards-Script/releases)。
@@ -168,8 +168,10 @@ release. Build resources exclude local config, credentials, sessions, and report
 The **Windows desktop test package** GitHub Actions workflow supports manual
 execution, `desktop-v*` tags, and relevant pull requests. Successful builds upload
 installers, portable archives, corresponding source, checksums, and this guide as
-CI artifacts. Matching `desktop-vX.Y.Z` tag builds also publish a GitHub Release
-after packaging succeeds; manual and pull-request builds produce artifacts only.
+CI artifacts. The **Publish v4 updates** workflow calls this same validation chain
+when runtime changes reach `v4`, then automatically creates a `desktop-vX.Y.Z`
+GitHub Release after all checks pass. Manual desktop test runs and pull requests
+produce artifacts only. Explicit version tags remain supported.
 The workflow also silently installs the NSIS package into a fresh directory on
 the disposable Windows runner and checks the installed runtime and UI with Node.js,
 npm, Git and Docker removed from the application PATH. It uploads an installed UI
@@ -266,20 +268,40 @@ license files, and renderer licenses. Provide the corresponding source archive a
 
 ## Publish desktop updates
 
-1. Set `desktop/package.json`, its lockfile and `desktop/src-tauri/Cargo.toml` /
-   `Cargo.lock` to the new desktop version. Update
-   this guide, the README download instructions and the desktop changelog.
-2. Commit all release changes, including new files and workflow changes, and run
-   the Windows validation/package workflow for that commit. Resolve the remaining
-   acceptance items above before describing the build as stable.
-3. Push the matching `desktop-vX.Y.Z` tag for the tested commit. The workflow checks
-   the tag against the desktop version and repeats validation and packaging. After
-   success it publishes the EXE, ZIP, `rewards-desktop-source.zip` (from the tagged
-   commit), and `SHA256SUMS.txt` as a GitHub Release. Manual workflow runs produce
-   Actions artifacts only.
-4. Check the release assets and checksums, include known limits and validation
-   results in the release notes, and update download links after publication.
-   Exercise the update/download/install flow from the previous version.
+1. Merge reviewed runtime changes into `v4`. **Publish v4 updates** compares each
+   component with its last reachable release tag; documentation and test-only changes
+   do not create versions. Desktop and Docker changes are evaluated separately;
+   shared backend changes affect both.
+2. The workflow reserves versions in a bot commit on `v4` and synchronizes npm
+   manifests/lockfiles plus the desktop Cargo manifest/lockfile. An explicit version
+   higher than existing tags is preserved; otherwise `feat:` increments minor,
+   breaking Conventional Commits increment major, and other runtime changes increment
+   patch. A new backend major requires a new release branch rather than publishing
+   v5 from `v4`.
+3. Linux/Windows CI validates that exact commit. Windows builds additionally run Rust
+   tests, packaged WebView2 checks and installed-app checks. Only after these succeed
+   are desktop assets uploaded to a draft and published with the automatic tag as
+   the latest Release. Docker builds/pushes its versioned multi-platform image after
+   CI succeeds, then promotes `:4` / `:latest` and creates its own script Release.
+   Script releases do not replace the desktop GitHub Latest marker.
+4. Failed checks do not publish a desktop release or promote a Docker image. The bot
+   version commit can remain on `v4`; rerun **Publish v4 updates** to retry that
+   unpublished version. If another update reached `v4`, the older build refuses
+   promotion and the queued run covers pending changes since the last tag. A failed
+   desktop asset upload can leave an unpublished draft; rerunning uploads the assets
+   before making it public. Do not manually reuse or move a published version tag.
+5. Check the resulting assets, release notes and checksums. Hosted UI tests do not
+   validate real Microsoft login/tasks, upgrade on a user's machine, sleep/resume or
+   code signing. Verify those separately when relevant. The desktop test workflow
+   can still be run manually without publishing, and an explicit matching
+   `desktop-vX.Y.Z` tag also runs validation and publication.
+
+The release controller runs directly on pushes to `v4` (including merges), using
+`GITHUB_TOKEN`; bot version commits do not recursively trigger workflows. Reusable
+workflows explicitly receive the reserved commit, so no personal access token is
+required. Branch rules must permit the Actions bot's version commit. Releases are
+serialized and do not cancel in progress. If branch protection rejects the bot push,
+the workflow fails before publication; it never force-pushes or bypasses protection.
 
 The updater selects the highest numeric `desktop-vX.Y.Z` release and ignores script
 releases, drafts and prereleases. Publish both the installer and checksum file;

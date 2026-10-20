@@ -2,7 +2,7 @@ name: Release and Docker Push
 
 on:
     push:
-        branches: ['v3', 'v4']
+        branches: ['v3']
         paths:
             - package.json
     workflow_dispatch:
@@ -16,6 +16,7 @@ env:
 
 jobs:
     deploy:
+        if: github.ref_name == 'v3'
         runs-on: ubuntu-latest
         steps:
             - name: Checkout

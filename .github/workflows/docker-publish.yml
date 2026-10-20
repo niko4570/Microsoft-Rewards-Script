@@ -1,0 +1,71 @@
+name: Publish tested Docker image
+
+on:
+    workflow_call:
+        inputs:
+            ref:
+                required: true
+                type: string
+            tag:
+                required: true
+                type: string
+            version:
+                required: true
+                type: string
+
+permissions:
+    contents: read
+
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+            packages: write
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  ref: ${{ inputs.ref }}
+            - name: Validate release identity and current branch
+              shell: bash
+              env:
+                  EXPECTED_VERSION: ${{ inputs.version }}
+                  RELEASE_TAG: ${{ inputs.tag }}
+              run: |
+                  set -euo pipefail
+                  test "$(node -p "require('./package.json').version")" = "$EXPECTED_VERSION"
+                  test "$RELEASE_TAG" = "v$EXPECTED_VERSION"
+                  test "$(git ls-remote origin refs/heads/v4 | cut -f1)" = "$(git rev-parse HEAD)"
+                  echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+            - uses: docker/setup-qemu-action@v3
+            - uses: docker/setup-buildx-action@v3
+            - uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+            - name: Build and push versioned image
+              uses: docker/build-push-action@v5
+              with:
+                  context: .
+                  push: true
+                  platforms: linux/amd64,linux/arm64
+                  tags: ${{ env.IMAGE }}:${{ inputs.version }}
+                  cache-from: type=gha,scope=v4
+                  cache-to: type=gha,scope=v4,mode=max
+            - name: Promote tested image while v4 still matches
+              shell: bash
+              env:
+                  RELEASE_VERSION: ${{ inputs.version }}
+              run: |
+                  set -euo pipefail
+                  test "$(git ls-remote origin refs/heads/v4 | cut -f1)" = "$(git rev-parse HEAD)"
+                  docker buildx imagetools create --tag "$IMAGE:4" --tag "$IMAGE:latest" "$IMAGE:$RELEASE_VERSION"
+            - name: Publish script release after image succeeds
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: ${{ inputs.tag }}
+                  target_commitish: ${{ inputs.ref }}
+                  name: ${{ inputs.tag }}
+                  generate_release_notes: true
+                  make_latest: false
