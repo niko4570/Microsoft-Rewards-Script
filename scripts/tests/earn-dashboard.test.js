@@ -57,7 +57,10 @@ const link = {
 test('automatic inspection includes point cards after daily streak completion', () => {
     const completedStreak = { partner: 'dailyset', dailyPoints: [5], isCurrentDayCompleted: true }
     const snapshot = parse([account, completedStreak, link])
-    assert.equal(snapshot.streaks.some(streak => !streak.isCurrentDayCompleted), false)
+    assert.equal(
+        snapshot.streaks.some(streak => !streak.isCurrentDayCompleted),
+        false
+    )
     assert.equal(hasPendingEarnTasks(snapshot, today), true)
     assert.equal(hasPendingEarnTasks(parse([account, link]), today), true)
     assert.equal(hasPendingEarnTasks(parse([account, completedStreak]), today), false)
@@ -66,13 +69,26 @@ test('automatic inspection includes point cards after daily streak completion', 
 test('automatic inspection follows task eligibility and current-day filtering', () => {
     const completedStreak = { partner: 'dailyset', dailyPoints: [5], isCurrentDayCompleted: true }
     for (const patch of [
-        { isCompleted: true }, { isLocked: true }, { isPromotional: true },
-        { promotionType: 'quiz' }, { points: 0 }, { priority: -1 },
-        { hash: null }, { date: '2000-01-01' }, { date: '2099-01-01' }
+        { isCompleted: true },
+        { isLocked: true },
+        { isPromotional: true },
+        { promotionType: 'quiz' },
+        { points: 0 },
+        { priority: -1 },
+        { hash: null },
+        { date: '2000-01-01' },
+        { date: '2099-01-01' }
     ]) {
-        assert.equal(hasPendingEarnTasks(parse([account, completedStreak, { ...link, ...patch }]), today), false, JSON.stringify(patch))
+        assert.equal(
+            hasPendingEarnTasks(parse([account, completedStreak, { ...link, ...patch }]), today),
+            false,
+            JSON.stringify(patch)
+        )
     }
-    assert.equal(hasPendingEarnTasks(parse([account, { ...completedStreak, isCurrentDayCompleted: false }]), today), true)
+    assert.equal(
+        hasPendingEarnTasks(parse([account, { ...completedStreak, isCurrentDayCompleted: false }]), today),
+        true
+    )
 })
 
 test('current balance header is parsed; progress and lifetime totals are never mistaken for balance', () => {

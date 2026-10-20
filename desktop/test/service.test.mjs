@@ -62,10 +62,14 @@ test('startup with saved automatic settings runs point cards even when streaks a
     const ReactFunc = require('../../dist/browser/ReactFunc.js').default
     const { hasPendingEarnTasks } = require('../../dist/functions/TaskPolicy.js')
     const { service, backend } = fixture(t, {
-        email: 'person@example.com', startOnLogin: true, schedule: { enabled: true }
+        email: 'person@example.com',
+        startOnLogin: true,
+        schedule: { enabled: true }
     })
     backend.sessions = ['mobile', 'desktop'].map(platform => ({
-        email: 'person@example.com', platform, hasStorageState: true
+        email: 'person@example.com',
+        platform,
+        hasStorageState: true
     }))
     const objects = [
         { balance: 123, level: 1 },
@@ -73,7 +77,10 @@ test('startup with saved automatic settings runs point cards even when streaks a
         { offerId: 'point-card', hash: 'signed', points: 5, destination: 'https://www.bing.com/search?q=test' }
     ]
     const html = `<script>self.__next_f.push([1,${JSON.stringify(JSON.stringify(objects))}])</script>`
-    const snapshot = new ReactFunc({ logger: { info() {}, debug() {}, warn() {}, error() {} }, isMobile: false }).snapshotPage(html)
+    const snapshot = new ReactFunc({
+        logger: { info() {}, debug() {}, warn() {}, error() {} },
+        isMobile: false
+    }).snapshotPage(html)
     service.resetScanner = async () => ({
         nextStreakResetAt: new Date(Date.now() + 3600000).toISOString(),
         pending: hasPendingEarnTasks(snapshot, '10/14/2026')

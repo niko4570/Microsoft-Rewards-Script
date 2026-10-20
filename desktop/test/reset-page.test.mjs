@@ -16,7 +16,9 @@ test('reset inspection reads full server data without waiting for background net
             return { ok: () => true, text: async () => html }
         },
         url: () => url,
-        content() { throw new Error('DOM snapshot must not replace the complete server response') }
+        content() {
+            throw new Error('DOM snapshot must not replace the complete server response')
+        }
     }
     assert.equal(await readResetPage(page, url), html)
 })
@@ -28,14 +30,38 @@ test('HTTP failures, missing responses and login redirects still reject reset in
         [{ ok: () => true }, 'https://login.live.com/'],
         [{ ok: () => true }, 'https://rewards.bing.com.example.org/']
     ]) {
-        await assert.rejects(readResetPage({ goto: async () => response, url: () => destination }, url), /页面读取失败或会话已过期/)
+        await assert.rejects(
+            readResetPage({ goto: async () => response, url: () => destination }, url),
+            /页面读取失败或会话已过期/
+        )
     }
 })
 
 test('navigation and document read failures propagate to the scheduler retry', async () => {
-    await assert.rejects(readResetPage({ goto: async () => { throw new Error('connection reset') } }, url), /connection reset/)
-    await assert.rejects(readResetPage({
-        goto: async () => ({ ok: () => true, text: async () => { throw new Error('incomplete document') } }),
-        url: () => url
-    }, url), /incomplete document/)
+    await assert.rejects(
+        readResetPage(
+            {
+                goto: async () => {
+                    throw new Error('connection reset')
+                }
+            },
+            url
+        ),
+        /connection reset/
+    )
+    await assert.rejects(
+        readResetPage(
+            {
+                goto: async () => ({
+                    ok: () => true,
+                    text: async () => {
+                        throw new Error('incomplete document')
+                    }
+                }),
+                url: () => url
+            },
+            url
+        ),
+        /incomplete document/
+    )
 })

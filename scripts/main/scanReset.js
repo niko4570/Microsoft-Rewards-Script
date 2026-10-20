@@ -51,7 +51,10 @@ try {
         throw new Error('未确认登录状态，请重新登录')
     if (snapshot.warnings?.length) throw new Error('Rewards 返回账户警告，请手动检查')
     const today = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', year: 'numeric'
+        timeZone: 'Asia/Shanghai',
+        month: '2-digit',
+        day: '2-digit',
+        year: 'numeric'
     }).format(new Date())
     const pending = hasPendingEarnTasks(snapshot, today)
     if (!snapshot.streaks.length && !pending) throw new Error('未读取到每日任务状态')
