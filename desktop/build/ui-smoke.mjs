@@ -52,9 +52,15 @@ function testPolicy(mode) {
             '-StateFile',
             policyState
         ],
-        { encoding: 'utf8', timeout: 15000, windowsHide: true }
+        { encoding: 'utf8', timeout: 60000, windowsHide: true }
     )
-    if (result.error) throw result.error
+    if (result.error)
+        throw new Error(
+            `WebView2 test policy ${mode}: ${result.error.message}\n${result.stderr || result.stdout || ''}`,
+            {
+                cause: result.error
+            }
+        )
     if (result.status !== 0) throw new Error(`WebView2 test policy ${mode} failed: ${result.stderr || result.stdout}`)
     console.log(result.stdout.trim())
 }
