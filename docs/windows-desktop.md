@@ -1,32 +1,26 @@
-# Rewards Desktop 0.1.8 preview
+# Rewards Desktop 预览版使用与发布指南
 
-Rewards Desktop is a Chinese-language Windows app for one China-region Microsoft
-Rewards account. It bundles Node.js and Chromium; users do not need Git, Node.js,
-Docker, or WSL. Windows 11 x64 is the validated build environment. Other Windows
-versions, regions, and multiple accounts have not been validated for this app.
+Rewards Desktop 是本仓库基于 [TheNetsky/Microsoft-Rewards-Script](https://github.com/TheNetsky/Microsoft-Rewards-Script) 扩展的中文 Windows 桌面应用。上游提供脚本基础，本 fork 增加桌面界面与中国区域单账号任务流程适配，并独立维护桌面发布。项目沿用 [GPL-3.0-or-later](../LICENSE)。
 
-## Download and first run
+应用内置 Node.js 和 Chromium，使用时无需安装 Git、Node.js、Docker 或 WSL。已验证环境为 Windows 11 x64；其他 Windows 版本、其他地区与多账号桌面使用尚未完成验证。
 
-Download a desktop installer or portable archive from this fork's
-[Releases](https://github.com/niko4570/Microsoft-Rewards-Script/releases) when
-available. Desktop artifacts use the `Rewards-Desktop-<version>-x64` name.
-Source archives and upstream script releases are not desktop installers.
+当前仓库桌面版本为 **0.1.9（待发布）**。本指南包含 0.1.9 更新功能说明；以下保留 0.1.8 下载入口，0.1.9 安装包以发布页实际提供的文件为准。
 
-1. Verify the download against the release's `SHA256SUMS.txt`. Preview builds are
-   unsigned; use a trusted source and do not disable system protection.
-2. Run the `.exe` installer, or extract the portable ZIP and open `Rewards Desktop.exe`.
-3. In the task overview, click **打开浏览器登录**. Complete the mobile and desktop
-   browser logins with the same Microsoft account. The windows open in sequence,
-   save each stable session, and close. No email or password needs to be entered
-   into the app itself. Login can be cancelled.
-4. Start one manual run and inspect the results. Completed, skipped, failed,
-   manual, and unconfirmed tasks are reported separately. Exit code 0 does not
-   mean every task completed or every advertised reward was credited.
-5. Pause any older Docker or script schedule for the same account before enabling
-   automatic runs in the desktop app.
+## 下载与首次运行
 
-Saved sessions can expire. Additional verification or app authorization may still
-require interaction. Review the report and log in again when necessary.
+- **推荐安装版**：[Rewards-Desktop-0.1.8-x64.exe](https://github.com/niko4570/Microsoft-Rewards-Script/releases/download/desktop-v0.1.8/Rewards-Desktop-0.1.8-x64.exe)，下载后按向导安装。
+- **便携版**：[Rewards-Desktop-0.1.8-x64.zip](https://github.com/niko4570/Microsoft-Rewards-Script/releases/download/desktop-v0.1.8/Rewards-Desktop-0.1.8-x64.zip)，解压到单独目录后运行 `Rewards Desktop.exe`。
+- **发布说明与校验文件**：[0.1.8 发布页](https://github.com/niko4570/Microsoft-Rewards-Script/releases/tag/desktop-v0.1.8)。后续版本请查看本仓库的 [Releases](https://github.com/niko4570/Microsoft-Rewards-Script/releases)。
+
+GitHub 的 **Code → Download ZIP**、**Source code (zip/tar.gz)** 和 `rewards-desktop-source-*.zip` 均为源码，需要自行构建。上游脚本发布包也不包含本 fork 的桌面安装程序。
+
+1. 下载发布页提供的 `SHA256SUMS.txt`，核对安装包或便携包的 SHA-256。预览版安装程序尚未签名，请使用可信下载来源，不要关闭系统防护。
+2. 安装 EXE，或解压便携版后运行 `Rewards Desktop.exe`。
+3. 在任务概览点击 **打开浏览器登录**，依次完成移动端和桌面端浏览器登录，两次使用同一个 Microsoft 账号。应用内无需填写邮箱或密码；登录可取消。
+4. 先手动执行一次任务并查看报告。完成、跳过、失败、需人工处理和未确认会分别记录；退出码为 0 不代表所有任务完成或所有积分到账。
+5. 开启桌面自动运行前，暂停同账号的旧 Docker 或脚本定时任务。自动运行和开机启动默认关闭，开启后需保持应用或托盘运行。
+
+保存的会话可能过期，额外验证或应用授权仍可能需要交互操作。遇到提示时请查看报告，必要时重新登录。后续章节说明自动运行、升级、数据位置及构建验证。
 
 ## Automatic runs
 
@@ -48,7 +42,9 @@ work; resume checks only the current cycle and does not replay missed days.
 Closing the window leaves the app in the tray. Exiting the app stops its backend,
 tasks, and inspection processes.
 
-## App check-in recovery in 0.1.8
+## App check-in recovery (0.1.8 and later)
+
+签到自动恢复已完成实际验证（用户确认）。下文说明其复查、补交和防重复机制。
 
 A balance increase alone does not confirm app check-in. The app checks the page's
 current-day streak state after submission.
@@ -67,7 +63,11 @@ full task run.
 
 ## Upgrade and rollback
 
-In-app update checking and automatic application updates are not implemented.
+0.1.9 起可在 **应用设置 → 维护与版本 → 检查更新** 查找 GitHub 上的桌面正式发布。
+发现新版本后点击 **下载新版安装包**，选择保存位置；应用显示下载进度并自动校验 SHA256。
+完成后点击 **打开下载位置**，退出托盘中的应用，再运行安装包。更新不会自动退出应用或启动安装程序。
+下载失败可重试；校验失败的临时文件会删除。旧版本首次升级到包含此功能的版本仍需手动下载。
+便携版用户如需继续便携使用，可从发布页下载 ZIP 并解压到新目录。
 
 1. Exit the old app from the tray and back up `%APPDATA%\Rewards Desktop` while it
    is stopped, including any SQLite WAL/SHM files.
@@ -136,13 +136,11 @@ and tests the packaged UI. Linux/WSL dependencies cannot be copied into a Window
 release. Build resources exclude local config, credentials, sessions, and reports.
 
 The **Windows desktop test package** GitHub Actions workflow supports manual
-execution, `desktop-v*` tags, and relevant pull requests. It uploads installers,
-portable archives, corresponding source, checksums, and this guide as CI artifacts.
-It does not publish a desktop GitHub Release or execute real account tasks.
-
-For a desktop release, tag the tested source commit, run the Windows build, and
-attach the installer, portable archive, corresponding source archive, and checksum
-file to the matching GitHub Release. Include known limits and validation results.
+execution, `desktop-v*` tags, and relevant pull requests. Successful builds upload
+installers, portable archives, corresponding source, checksums, and this guide as
+CI artifacts. Matching `desktop-vX.Y.Z` tag builds also publish a GitHub Release
+after packaging succeeds; manual and pull-request builds produce artifacts only.
+The workflow does not execute real account tasks. See the publishing steps below.
 
 ## Validation and known limits
 
@@ -157,11 +155,18 @@ The October 18, 2026 Windows build of 0.1.8 passed:
 
 Existing 0.1.7 real-account logs confirm successful browser login, task execution,
 point changes, and app check-in after a manual rerun. They do not establish the
-Microsoft backend cause of the initial unconfirmed check-in. The new automatic
-recovery path uses simulated waits in tests and still needs a real-cycle trial.
+Microsoft backend cause of the initial unconfirmed check-in.
+
+签到自动恢复已完成实际验证（用户确认），不再列为待验收项。该确认不代表已确定最初签到未确认的服务端原因。
+
+当前 0.1.9 工作区已通过本地构建、ESLint、48 项任务/dashboard/OAuth 测试、
+36 项桌面测试、8 项调度测试、日志解析测试，以及 Electron 界面冒烟检查
+（含模拟更新下载与校验）。这些结果来自 Linux/WSL 检查，不替代当前版本的
+Windows 安装包和真实 Release 更新链路验收。
 
 Clean-machine installation, upgrade/rollback, long-running sleep/startup behavior,
-and independent first-time user acceptance remain to be checked. The preview
+the real GitHub Release update/download/install flow, and independent first-time
+user acceptance remain to be checked. The preview
 supports a limited account/region scope and does not guarantee task completion,
 point credit, or future compatibility with Microsoft service changes.
 
@@ -170,3 +175,25 @@ point credit, or future compatibility with Microsoft service changes.
 This fork retains GPL-3.0-or-later. Distributions include the project license,
 Node.js license, backend dependency notices, Electron notices, and renderer
 licenses. Provide the corresponding source archive alongside binary releases.
+
+## Publish desktop updates
+
+1. Set `desktop/package.json` and its lockfile to the new desktop version. Update
+   this guide, the README download instructions and the desktop changelog.
+2. Commit all release changes, including new files and workflow changes, and run
+   the Windows validation/package workflow for that commit. Resolve the remaining
+   acceptance items above before describing the build as stable.
+3. Push the matching `desktop-vX.Y.Z` tag for the tested commit. The workflow checks
+   the tag against the desktop version and repeats validation and packaging. After
+   success it publishes the EXE, ZIP, `rewards-desktop-source.zip` (from the tagged
+   commit), and `SHA256SUMS.txt` as a GitHub Release. Manual workflow runs produce
+   Actions artifacts only.
+4. Check the release assets and checksums, include known limits and validation
+   results in the release notes, and update download links after publication.
+   Exercise the update/download/install flow from the previous version.
+
+The updater selects the highest numeric `desktop-vX.Y.Z` release and ignores script
+releases, drafts and prereleases. Publish both the installer and checksum file;
+incomplete releases display a retry message. Desktop downloads use
+`Rewards-Desktop-X.Y.Z-x64.exe` and `Rewards-Desktop-X.Y.Z-x64.zip`; the source ZIP
+is for building from source, not for running the desktop app.

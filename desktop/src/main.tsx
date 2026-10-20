@@ -32,6 +32,7 @@ function App() {
     const [busy, setBusy] = useState(false)
     const [message, setMessage] = useState('')
     const [failed, setFailed] = useState(false)
+    const [updateBusy, setUpdateBusy] = useState(false)
     const logEnd = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
@@ -68,6 +69,23 @@ function App() {
             setMessage(error instanceof Error ? error.message : String(error))
         } finally {
             setBusy(false)
+        }
+    }
+
+    async function updateApp(action: () => Promise<unknown>) {
+        setUpdateBusy(true)
+        try {
+            await action()
+        } catch {
+            // The updater publishes its own error and retry state.
+        } finally {
+            try {
+                setSnapshot(await window.desktop.snapshot())
+            } catch (error) {
+                setFailed(true)
+                setMessage(error instanceof Error ? error.message : String(error))
+            }
+            setUpdateBusy(false)
         }
     }
 
@@ -347,8 +365,9 @@ function App() {
                                 登录 Windows 后启动到托盘
                             </label>
                             <p className="muted">
-                                打开应用、登录完成或休眠恢复后自动检查连胜和积分卡片。尚未自动运行的周期每 5 分钟检查新增任务；
-                                每周期最多自动启动一次，运行后等待服务端重置。读取失败 5 分钟后重试，任务失败可手动重试。
+                                打开应用、登录完成或休眠恢复后自动检查连胜和积分卡片。尚未自动运行的周期每 5
+                                分钟检查新增任务； 每周期最多自动启动一次，运行后等待服务端重置。读取失败 5
+                                分钟后重试，任务失败可手动重试。
                             </p>
                             <button className="primary" type="submit" disabled={busy || !idle}>
                                 保存设置
@@ -358,9 +377,47 @@ function App() {
                             <h3>维护与版本</h3>
                             <p>Rewards Desktop v{snapshot.version} · Windows 11 x64 私人测试版</p>
                             <p className="muted">
-                                更新前退出应用，备份数据目录，再运行新版安装包。卸载默认保留本地数据。测试包暂未签名。
+                                检查 GitHub
+                                上的桌面新版本，直接下载安装包。下载完成后退出应用并运行安装包；本地账号、会话和设置会保留。测试包暂未签名。
                             </p>
+                            <div role="status" aria-live="polite">
+                                {snapshot.update.status === 'checking' && <p>正在检查更新…</p>}
+                                {snapshot.update.status === 'latest' && <p>当前已是最新桌面版本</p>}
+                                {snapshot.update.status === 'available' && <p>发现新版本 v{snapshot.update.version}</p>}
+                                {snapshot.update.status === 'downloading' && (
+                                    <p>
+                                        正在下载 v{snapshot.update.version}：{snapshot.update.progress}%{' '}
+                                        <progress value={snapshot.update.progress} max={100} />
+                                    </p>
+                                )}
+                                {snapshot.update.status === 'downloaded' && (
+                                    <p>
+                                        v{snapshot.update.version} 下载完成，SHA256 校验通过。请退出应用后运行安装包。
+                                    </p>
+                                )}
+                                {snapshot.update.error && <p className="notice error">{snapshot.update.error}</p>}
+                            </div>
                             <div className="actions">
+                                <button
+                                    disabled={updateBusy}
+                                    onClick={() => void updateApp(() => window.desktop.checkUpdate())}
+                                >
+                                    检查更新
+                                </button>
+                                {snapshot.update.status === 'available' && (
+                                    <button
+                                        className="primary"
+                                        disabled={updateBusy}
+                                        onClick={() => void updateApp(() => window.desktop.downloadUpdate())}
+                                    >
+                                        下载新版安装包
+                                    </button>
+                                )}
+                                {snapshot.update.status === 'downloaded' && (
+                                    <button onClick={() => void act(() => window.desktop.showUpdateFile())}>
+                                        打开下载位置
+                                    </button>
+                                )}
                                 <button
                                     disabled={busy}
                                     onClick={() => void act(() => window.desktop.openDataDirectory())}

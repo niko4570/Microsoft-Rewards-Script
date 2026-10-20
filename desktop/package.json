@@ -1,7 +1,7 @@
 {
     "name": "rewards-desktop",
     "productName": "Rewards Desktop",
-    "version": "0.1.8",
+    "version": "0.1.9",
     "description": "Windows desktop companion for Microsoft Rewards Script",
     "author": "Microsoft Rewards Script contributors",
     "license": "GPL-3.0-or-later",

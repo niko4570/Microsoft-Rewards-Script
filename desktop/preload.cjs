@@ -4,6 +4,9 @@ const { contextBridge, ipcRenderer } = require('electron')
 
 const actions = [
     'snapshot',
+    'checkUpdate',
+    'downloadUpdate',
+    'showUpdateFile',
     'start',
     'stop',
     'login',

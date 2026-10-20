@@ -1,12 +1,18 @@
 # Rewards Desktop changelog
 
+## 0.1.9（待发布）
+
+- 在应用设置中检查 GitHub 桌面新版本，直接下载安装包，显示下载进度并校验 SHA256。
+- 下载失败可重试，校验失败不会覆盖已有文件；下载完成后可打开文件位置，退出应用后手动安装。
+- 匹配版本的 `desktop-vX.Y.Z` 标签通过 Windows 打包验证后，自动发布安装包、便携包、源码与校验文件。
+
 ## 0.1.8
 
 - Recheck unconfirmed app check-in after other tasks, then up to three times at one-minute intervals.
 - Allow one compensating submission per account and reset cycle when the original response was acknowledged and the app service remains available.
 - Persist the compensation reservation across restarts and manual runs; stop compensation when the response, streak state, or reset cycle is uncertain.
 - Verify completion from page state and avoid treating a balance increase as confirmed check-in.
-- Pass 48 task tests, 33 desktop tests, and Windows runtime and packaged UI checks. Live recovery across a real reset cycle remains unverified.
+- Pass 48 task tests, 33 desktop tests, and Windows runtime and packaged UI checks. 签到自动恢复已完成实际验证（用户确认）。
 
 ## 0.1.7
 

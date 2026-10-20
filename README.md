@@ -1,27 +1,51 @@
-[![Discord](https://img.shields.io/badge/Join%20Our%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/8BxYbV4pkj)
-[![Latest Build](https://img.shields.io/github/actions/workflow/status/TheNetsky/Microsoft-Rewards-Script/auto-release.yml?branch=v4&style=for-the-badge&label=Latest%20Build)](https://github.com/TheNetsky/Microsoft-Rewards-Script/actions/workflows/auto-release.yml)
-[![Docker](https://img.shields.io/badge/Docker-GHCR-blue?style=for-the-badge&logo=docker)](https://github.com/TheNetsky/Microsoft-Rewards-Script/pkgs/container/microsoft-rewards-script)
+# Rewards Desktop · Microsoft Rewards Script 扩展版
 
-# Microsoft Rewards Script and Rewards Desktop
+本项目是基于 [TheNetsky/Microsoft-Rewards-Script](https://github.com/TheNetsky/Microsoft-Rewards-Script) 扩展的 **fork**，在上游 Microsoft Rewards 自动化脚本的基础上，增加了中文 Windows 桌面应用 **Rewards Desktop**，并针对中国区域单账号的日常任务流程做了适配。
 
-Rewards Desktop **0.1.8** provides a Chinese-language Windows interface for a
-single China-region account. It includes Node.js and Chromium, browser login,
-manual task controls, persistent reports, and automatic runs based on Rewards
-reset times. Git, Node.js, Docker, and WSL are not required to use the desktop app.
+**Windows 用户可以直接下载安装包使用，无需安装 Git、Node.js、Docker 或 WSL。** 当前仓库桌面版本为 **0.1.9（待发布）**，已验证环境为 Windows 11 x64。下方保留 0.1.8 预览版下载入口，0.1.9 安装包以发布页实际提供的文件为准。
 
-- [Downloads and releases](https://github.com/niko4570/Microsoft-Rewards-Script/releases)
-- [Windows setup, upgrades, and validation](docs/windows-desktop.md)
-- [Desktop changelog](desktop/CHANGELOG.md)
-- [China tasks-only setup for WSL and Docker](docs/china-tasks.md)
+## 项目来源与扩展
 
-The desktop build is a preview. Automatic application updates are not available;
-exit the tray app and run the newer installer to upgrade. Keep the same install
-location and user data directory. The installer is unsigned. Download only from
-a trusted source and verify the supplied SHA-256 checksums.
+- **上游项目**：[TheNetsky/Microsoft-Rewards-Script](https://github.com/TheNetsky/Microsoft-Rewards-Script)。本项目沿用其脚本基础与任务执行能力，感谢上游作者和贡献者的工作。
+- **本仓库扩展**：中文桌面界面、浏览器登录入口、手动任务控制、持久报告、诊断导出，以及按 Rewards 服务端重置周期检查并自动运行任务的托盘功能；同时提供中国区域 tasks-only 配置与签到状态复查、有限补交机制。
+- **发布关系**：本仓库的桌面应用由此 fork 维护和发布。上游脚本版本与本项目桌面版本分别编号；上游的构建、发布和 Docker 镜像不能代表此 fork 的桌面构建状态。
+- **许可证**：沿用 [GPL-3.0-or-later](LICENSE)，保留上游版权和许可证声明；桌面发布同时提供对应源码。
 
-This fork extends [TheNetsky/Microsoft-Rewards-Script](https://github.com/TheNetsky/Microsoft-Rewards-Script).
-The badges above refer to upstream services. The sections below describe the
-script and Docker setup; desktop users should follow the Windows guide.
+## Windows 下载
+
+**以下为 0.1.8 预览版下载入口，首次使用推荐安装版 EXE：**
+
+| 下载内容                       | 链接                                                                                                                                                            | 用途                                       |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| Windows x64 安装版，约 259 MiB | [下载 Rewards-Desktop-0.1.8-x64.exe](https://github.com/niko4570/Microsoft-Rewards-Script/releases/download/desktop-v0.1.8/Rewards-Desktop-0.1.8-x64.exe)       | 按向导安装后打开应用                       |
+| Windows x64 便携版，约 359 MiB | [下载 Rewards-Desktop-0.1.8-x64.zip](https://github.com/niko4570/Microsoft-Rewards-Script/releases/download/desktop-v0.1.8/Rewards-Desktop-0.1.8-x64.zip)       | 解压到单独目录，运行 `Rewards Desktop.exe` |
+| SHA-256 校验文件               | [下载 SHA256SUMS.txt](https://github.com/niko4570/Microsoft-Rewards-Script/releases/download/desktop-v0.1.8/SHA256SUMS.txt)                                     | 核对安装包、便携包和发布源码               |
+| 0.1.8 对应源码                 | [下载 rewards-desktop-source-0.1.8.zip](https://github.com/niko4570/Microsoft-Rewards-Script/releases/download/desktop-v0.1.8/rewards-desktop-source-0.1.8.zip) | 查看代码或自行构建                         |
+
+[查看 0.1.8 发布说明](https://github.com/niko4570/Microsoft-Rewards-Script/releases/tag/desktop-v0.1.8) · [查看所有版本](https://github.com/niko4570/Microsoft-Rewards-Script/releases) · [桌面版更新记录](desktop/CHANGELOG.md)
+
+> **如何选文件？** 想直接使用桌面应用，请选上面的安装版或便携版。GitHub 的 **Code → Download ZIP**、发布页的 **Source code (zip/tar.gz)**，以及 `rewards-desktop-source-*.zip` 都是源码，需要自行安装依赖和构建。
+>
+> 当前为预览版，安装程序尚未签名。0.1.8 需手动下载新版；0.1.9 新增应用内检查更新、下载安装包及 SHA-256 校验，下载完成后仍需从托盘退出应用并手动安装。其他 Windows 版本、其他地区和多账号桌面使用尚未完成验证。
+
+## 第一次使用
+
+1. 安装 EXE，或解压便携版后打开 `Rewards Desktop.exe`。
+2. 点击 **打开浏览器登录**，按提示依次完成移动端和桌面端浏览器登录，两次使用同一个 Microsoft 账号。应用内无需填写密码。
+3. 先手动执行一次任务，查看报告中的完成、跳过、失败和未确认状态；程序运行结束不代表所有积分都已到账。
+4. 需要自动运行时，在设置中开启，并保持应用或托盘运行。自动运行和开机启动默认关闭；同账号已有脚本或 Docker 定时任务时，应先暂停旧任务。
+
+签到自动恢复已完成实际验证（用户确认）。干净机器安装、升级回滚、真实开机启动与休眠唤醒，以及真实 Release 更新链路仍待验收。
+
+[完整的 Windows 使用、升级与故障诊断说明](docs/windows-desktop.md)
+
+## 其他使用方式与文档
+
+- **Windows 桌面版**：[使用指南与验证范围](docs/windows-desktop.md)
+- **中国区域 WSL / Docker tasks-only 配置**：[部署指南](docs/china-tasks.md)
+- **源码运行、Docker 和高级配置**：见下方英文技术文档。桌面应用用户可直接使用上面的下载与登录步骤。
+
+---
 
 > [!TIP]
 > This version supports the **new, modern Bing Rewards dashboard only** - it does **not** support the legacy dashboard.
@@ -33,7 +57,7 @@ script and Docker setup; desktop users should follow the Windows guide.
 
 ## Table of Contents
 
-Windows desktop preview: see the [setup, packaging and validation guide](docs/windows-desktop.md).
+Windows 桌面版请先阅读上方的 [下载指引](#windows-下载) 和 [首次使用步骤](#第一次使用)。以下目录用于脚本与 Docker 部署。
 
 - [Table of Contents](#table-of-contents)
 - [Quick Setup](#quick-setup)
@@ -77,7 +101,7 @@ git clone https://github.com/niko4570/Microsoft-Rewards-Script.git
 cd Microsoft-Rewards-Script
 ```
 
-Or, download the latest release ZIP and extract it.
+Or, download the corresponding source archive from [Releases](https://github.com/niko4570/Microsoft-Rewards-Script/releases) and extract it. For desktop 0.1.8, the source archive is `rewards-desktop-source-0.1.8.zip`; the `Rewards-Desktop-*-x64.zip` archive is a packaged Windows app, not a script source checkout.
 
 ## Account Setup
 

@@ -1,13 +1,15 @@
-import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, dialog, shell, powerMonitor } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, dialog, shell, powerMonitor, net } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { DesktopService } from './lib/service.mjs'
+import { DesktopUpdater } from './lib/updater.mjs'
 
 const directory = path.dirname(fileURLToPath(import.meta.url))
 let window
 let tray
 let service
+let updater
 let quitting = false
 let refreshBusy = false
 let refreshTimer
@@ -63,7 +65,7 @@ async function refresh() {
     if (!service || !window || window.isDestroyed() || refreshBusy) return
     refreshBusy = true
     try {
-        window.webContents.send('desktop:state', await service.snapshot())
+        window.webContents.send('desktop:state', { ...(await service.snapshot()), update: updater.state })
     } catch (error) {
         service.error = error.message
     } finally {
@@ -135,6 +137,11 @@ async function bootstrap() {
         ])
     )
     tray.on('double-click', showWindow)
+    updater = new DesktopUpdater({
+        version: app.getVersion(),
+        fetch: (...args) => net.fetch(...args),
+        onChange: () => void refresh()
+    })
     registerBridge()
     powerMonitor.on('suspend', () => service.scheduler.reset())
     powerMonitor.on('resume', () => {
@@ -151,7 +158,21 @@ async function bootstrap() {
 
 function registerBridge() {
     const handlers = {
-        snapshot: () => service.snapshot(),
+        snapshot: async () => ({ ...(await service.snapshot()), update: updater.state }),
+        checkUpdate: () => updater.check(),
+        downloadUpdate: () =>
+            updater.download(async name => {
+                const result = await dialog.showSaveDialog(window, {
+                    title: '下载新版安装包',
+                    defaultPath: path.join(app.getPath('downloads'), name),
+                    filters: [{ name: 'Windows 安装包', extensions: ['exe'] }]
+                })
+                return result.canceled ? null : result.filePath
+            }),
+        showUpdateFile: () => {
+            if (!updater.state.filePath) throw new Error('请先下载安装包')
+            shell.showItemInFolder(updater.state.filePath)
+        },
         start: () => service.startRun(),
         stop: () => service.stopRun(),
         login: () => service.login(),

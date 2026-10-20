@@ -4,6 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
+import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 
 const directory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -51,6 +52,51 @@ try {
     await page.getByRole('button', { name: '保存设置', exact: true }).click()
     await page.getByRole('status').filter({ hasText: '设置已保存' }).waitFor()
     assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'desktop.json'), 'utf8')).email, 'smoke@example.com')
+    const installer = 'smoke installer'
+    const updateFile = path.join(data, 'smoke-update.exe')
+    await application.evaluate(
+        ({ net, dialog }, fixture) => {
+            const originalFetch = net.fetch
+            const originalDialog = dialog.showSaveDialog
+            globalThis.restoreUpdateSmoke = () => {
+                net.fetch = originalFetch
+                dialog.showSaveDialog = originalDialog
+            }
+            const base = 'https://github.com/niko4570/Microsoft-Rewards-Script/releases/download/desktop-v999.0.0/'
+            const name = 'Rewards-Desktop-999.0.0-x64.exe'
+            net.fetch = async url => {
+                if (url.startsWith('https://api.github.com/'))
+                    return Response.json([
+                        {
+                            tag_name: 'desktop-v999.0.0',
+                            assets: [name, 'SHA256SUMS.txt'].map(file => ({
+                                name: file,
+                                state: 'uploaded',
+                                size: fixture.installer.length,
+                                browser_download_url: base + file
+                            }))
+                        }
+                    ])
+                if (url.endsWith('SHA256SUMS.txt')) return new Response(`${fixture.digest}  ${name}\n`)
+                return new Response(fixture.installer)
+            }
+            dialog.showSaveDialog = async () => ({ canceled: false, filePath: fixture.updateFile })
+        },
+        { installer, updateFile, digest: createHash('sha256').update(installer).digest('hex') }
+    )
+    try {
+        await page.getByRole('button', { name: '检查更新', exact: true }).click()
+        await page.getByText('发现新版本 v999.0.0', { exact: true }).waitFor()
+        await page.getByRole('button', { name: '下载新版安装包', exact: true }).click()
+        await page.getByText('v999.0.0 下载完成，SHA256 校验通过。请退出应用后运行安装包。', { exact: true }).waitFor()
+        assert.equal(fs.readFileSync(updateFile, 'utf8'), installer)
+        assert.equal(await page.getByRole('button', { name: '打开下载位置', exact: true }).count(), 1)
+    } finally {
+        await application.evaluate(() => {
+            globalThis.restoreUpdateSmoke()
+            delete globalThis.restoreUpdateSmoke
+        })
+    }
     await page.getByRole('button', { name: '任务总览', exact: true }).click()
     assert.equal(await page.getByRole('button', { name: '开始任务', exact: true }).isDisabled(), true)
     await page.getByRole('button', { name: '运行结果', exact: true }).click()

@@ -15,6 +15,13 @@ export interface TaskReport {
 
 export interface Snapshot {
     version: string
+    update: {
+        status: 'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'downloaded' | 'error'
+        version: string | null
+        progress: number
+        error: string | null
+        filePath: string | null
+    }
     settings: Settings
     automation: { nextResetAt: string | null; message: string }
     backendReady: boolean
@@ -28,6 +35,9 @@ export interface Snapshot {
 
 export interface DesktopBridge {
     snapshot(): Promise<Snapshot>
+    checkUpdate(): Promise<void>
+    downloadUpdate(): Promise<boolean>
+    showUpdateFile(): Promise<void>
     start(): Promise<unknown>
     stop(): Promise<unknown>
     login(): Promise<unknown>
