@@ -309,7 +309,10 @@ incomplete releases display a retry message. Desktop downloads use
 `Rewards-Desktop-X.Y.Z-x64.exe` and `Rewards-Desktop-X.Y.Z-x64.zip`; the source ZIP
 is for building from source, not for running the desktop app.
 
-已有打包产物可通过 **Windows desktop installer acceptance** 工作流单独复核：
-手动填写成功的 Windows 打包任务编号 `artifact_run_id`。工作流下载该任务的
-`rewards-desktop-windows-x64` 产物，校验并安装与当前桌面版本匹配的 EXE，
-执行安装后检查并上传截图，不重新打包或发布 Release。
+安装验收已包含在 **Windows desktop test package** 工作流中，打包成功后会自动
+校验安装包、静默安装、检查安装后的应用并上传截图，无需再启动独立验收工作流。
+
+仓库保留四份工作流：**CI** 负责 PR 检查、手动检查及发布前验证；
+**Publish v4 updates** 负责合并后的版本规划与发布调度；
+**Windows desktop test package** 和 **Publish tested Docker image** 分别负责平台构建与发布。
+PR 的格式检查只检查变更文件，并入 CI，不再自动提交格式修复 PR。
