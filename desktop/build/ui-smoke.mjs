@@ -34,11 +34,36 @@ const env = {
     MRS_DESKTOP_NODE: process.env.MRS_PACKAGED_EXECUTABLE ? 'not-a-system-node' : process.execPath,
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`
 }
+const policyState = path.join(data, 'webview2-test-policy.json')
+function testPolicy(mode) {
+    const result = spawnSync(
+        'powershell.exe',
+        [
+            '-NoProfile',
+            '-NonInteractive',
+            '-File',
+            path.join(directory, 'build/webview2-debug-policy.ps1'),
+            '-Mode',
+            mode,
+            '-Executable',
+            executable,
+            '-Port',
+            String(port),
+            '-StateFile',
+            policyState
+        ],
+        { encoding: 'utf8', timeout: 15000, windowsHide: true }
+    )
+    if (result.error) throw result.error
+    if (result.status !== 0) throw new Error(`WebView2 test policy ${mode} failed: ${result.stderr || result.stdout}`)
+    console.log(result.stdout.trim())
+}
 let child
 let browser
 let output = ''
 let connectionError = ''
 try {
+    if (process.env.GITHUB_ACTIONS === 'true' && process.env.RUNNER_OS === 'Windows') testPolicy('enable')
     child = spawn(executable, args, { env, stdio: ['ignore', 'pipe', 'pipe'] })
     let launchError
     child.on('error', error => {
@@ -148,5 +173,6 @@ try {
 } finally {
     if (child && child.exitCode === null)
         spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true })
+    if (fs.existsSync(policyState)) testPolicy('restore')
     fs.rmSync(data, { recursive: true, force: true, maxRetries: 20, retryDelay: 500 })
 }
