@@ -172,9 +172,14 @@ Windows 安装包和真实 Release 更新链路验收。
 
 无人值守运行（Windows 开机启动、休眠唤醒、断网恢复及跨日调度）已验证（用户确认），不再列为待验收项。
 
-Clean-machine installation, upgrade/rollback, the real GitHub Release
-update/download/install flow, and independent first-time user acceptance remain
-to be checked. The preview
+2026-10-20 的 0.1.9 Windows 云端验证已通过：
+
+- [完整构建与打包](https://github.com/niko4570/Microsoft-Rewards-Script/actions/runs/39364661685)：构建、ESLint、任务与桌面测试、开发及打包后界面检查，生成 EXE、ZIP、对应源码和校验文件；安装包来自提交 `1b777a0`。
+- [安装版验收](https://github.com/niko4570/Microsoft-Rewards-Script/actions/runs/39365904315)：使用同一安装包，在 Windows Server 2025 云端运行器的新目录中静默安装；校验 SHA-256，验证安装后的内置依赖、SQLite、有窗口/无窗口 Chromium、后台 API 鉴权、界面、设置保存、模拟更新下载及关闭到托盘，并上传截图。验收脚本来自提交 `550f7b5`。
+- 安装后启动时，应用 PATH 仅提供所需 Windows 系统命令；Node.js、npm、Git、Docker 不在应用 PATH 中。测试使用隔离用户数据，未登录 Microsoft 或执行真实账号任务。
+
+干净 Windows 11 的首次使用与真实账号登录/任务、升级回滚、真实 GitHub Release
+更新下载安装链路及独立新用户验收仍待完成。云端验证不等同于这些人工验收。 The preview
 supports a limited account/region scope and does not guarantee task completion,
 point credit, or future compatibility with Microsoft service changes.
 
@@ -205,3 +210,8 @@ releases, drafts and prereleases. Publish both the installer and checksum file;
 incomplete releases display a retry message. Desktop downloads use
 `Rewards-Desktop-X.Y.Z-x64.exe` and `Rewards-Desktop-X.Y.Z-x64.zip`; the source ZIP
 is for building from source, not for running the desktop app.
+
+已有打包产物可通过 **Windows desktop installer acceptance** 工作流单独复核：
+手动填写成功的 Windows 打包任务编号 `artifact_run_id`。工作流下载该任务的
+`rewards-desktop-windows-x64` 产物，校验并安装与当前桌面版本匹配的 EXE，
+执行安装后检查并上传截图，不重新打包或发布 Release。
