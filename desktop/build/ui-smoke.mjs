@@ -37,6 +37,7 @@ const env = {
 let child
 let browser
 let output = ''
+let connectionError = ''
 try {
     child = spawn(executable, args, { env, stdio: ['ignore', 'pipe', 'pipe'] })
     let launchError
@@ -52,11 +53,12 @@ try {
         try {
             browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { timeout: 1000 })
             break
-        } catch {
+        } catch (error) {
+            connectionError = String(error.message || error)
             await new Promise(resolve => setTimeout(resolve, 500))
         }
     }
-    if (!browser) throw new Error(`WebView2 debug endpoint unavailable: ${output}`)
+    if (!browser) throw new Error(`WebView2 debug endpoint unavailable: ${connectionError}\n${output}`)
     async function findPage() {
         for (let attempt = 0; attempt < 120; attempt++) {
             const page = browser
@@ -120,6 +122,17 @@ try {
     )
 } catch (error) {
     const evidence = [String(error.stack || error), `App stderr: ${output}`]
+    const diagnostics = spawnSync(
+        'powershell.exe',
+        [
+            '-NoProfile',
+            '-NonInteractive',
+            '-Command',
+            `Get-Process -Id ${child?.pid || 0} -ErrorAction SilentlyContinue | Select-Object Id,MainWindowTitle,Responding | ConvertTo-Json -Compress; Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq ${child?.pid || 0} -or $_.Name -eq 'msedgewebview2.exe' } | Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Compress`
+        ],
+        { encoding: 'utf8', timeout: 15000, windowsHide: true }
+    )
+    evidence.push(`Windows processes: ${diagnostics.stdout || diagnostics.stderr || diagnostics.error || ''}`)
     const logs = path.join(data, 'logs')
     if (fs.existsSync(logs)) {
         for (const name of fs.readdirSync(logs).filter(name => name.endsWith('.log'))) {

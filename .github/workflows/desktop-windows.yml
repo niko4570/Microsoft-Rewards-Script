@@ -71,6 +71,7 @@ jobs:
                       desktop/release/*.zip
                       desktop/release/*.png
                       desktop/release/ui-smoke-failure.txt
+                      desktop/release/portable/Rewards Desktop.exe
                   if-no-files-found: ignore
                   retention-days: 3
             - name: Corresponding source snapshot
