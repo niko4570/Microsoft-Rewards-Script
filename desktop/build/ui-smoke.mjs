@@ -36,13 +36,13 @@ const env = {
 }
 let child
 let browser
+let output = ''
 try {
     child = spawn(executable, args, { env, stdio: ['ignore', 'pipe', 'pipe'] })
     let launchError
     child.on('error', error => {
         launchError = error
     })
-    let output = ''
     child.stderr.on('data', chunk => {
         output += chunk
     })
@@ -118,6 +118,20 @@ try {
     console.log(
         `Tauri WebView2, real backend, settings, destroyed/recreated window, single instance and graceful exit: PASS\nScreenshot: ${screenshot}`
     )
+} catch (error) {
+    const evidence = [String(error.stack || error), `App stderr: ${output}`]
+    const logs = path.join(data, 'logs')
+    if (fs.existsSync(logs)) {
+        for (const name of fs.readdirSync(logs).filter(name => name.endsWith('.log'))) {
+            evidence.push(
+                `${name}:\n${fs.readFileSync(path.join(logs, name), 'utf8').split('\n').slice(-25).join('\n')}`
+            )
+        }
+    }
+    fs.mkdirSync(path.join(directory, 'release'), { recursive: true })
+    fs.writeFileSync(path.join(directory, 'release/ui-smoke-failure.txt'), evidence.join('\n\n'))
+    console.error(evidence.join('\n\n'))
+    throw error
 } finally {
     if (child && child.exitCode === null)
         spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true })

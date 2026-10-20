@@ -32,6 +32,10 @@ jobs:
             - uses: Swatinem/rust-cache@v2
               with:
                   workspaces: desktop/src-tauri
+                  cache-on-failure: true
+            - name: Ensure shared WebView2 Runtime
+              shell: pwsh
+              run: ./desktop/build/ensure-webview2.ps1
             - run: npm ci
             - run: npm run build
             - run: npm run lint
@@ -45,6 +49,8 @@ jobs:
             - run: npm run build --prefix desktop
             - run: npm run test:native --prefix desktop
             - run: npm run package:win --prefix desktop
+              env:
+                  MRS_SMOKE_SCREENSHOT: ${{ github.workspace }}/desktop/release/packaged-smoke.png
             - name: Verify installed app without development tools on PATH
               shell: pwsh
               run: ./desktop/build/installed-smoke.ps1
@@ -55,6 +61,18 @@ jobs:
                   name: rewards-desktop-installed-smoke
                   path: desktop/release/installed-smoke.png
                   if-no-files-found: ignore
+            - name: Upload failed package evidence
+              if: failure()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: rewards-desktop-failed-package
+                  path: |
+                      desktop/release/*.exe
+                      desktop/release/*.zip
+                      desktop/release/*.png
+                      desktop/release/ui-smoke-failure.txt
+                  if-no-files-found: ignore
+                  retention-days: 3
             - name: Corresponding source snapshot
               run: git archive --format=zip --output=desktop/release/rewards-desktop-source.zip HEAD
             - name: Include source checksum

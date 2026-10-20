@@ -179,21 +179,24 @@ fn main() {
         Ok(app) => app,
         Err(error) => {
             let message = format!("Rewards Desktop 无法启动：{error}");
-            #[cfg(windows)]
-            unsafe {
-                use windows_sys::Win32::UI::WindowsAndMessaging::{
-                    MessageBoxW, MB_ICONERROR, MB_OK,
-                };
-                let text: Vec<u16> = message.encode_utf16().chain(Some(0)).collect();
-                let title: Vec<u16> = "Rewards Desktop".encode_utf16().chain(Some(0)).collect();
-                MessageBoxW(
-                    std::ptr::null_mut(),
-                    text.as_ptr(),
-                    title.as_ptr(),
-                    MB_OK | MB_ICONERROR,
-                );
-            }
             eprintln!("{message}");
+            // Isolated runs must fail with diagnostics rather than wait on a modal dialog.
+            #[cfg(windows)]
+            if !std::env::args().any(|arg| arg.starts_with("--user-data-dir=")) {
+                unsafe {
+                    use windows_sys::Win32::UI::WindowsAndMessaging::{
+                        MessageBoxW, MB_ICONERROR, MB_OK,
+                    };
+                    let text: Vec<u16> = message.encode_utf16().chain(Some(0)).collect();
+                    let title: Vec<u16> = "Rewards Desktop".encode_utf16().chain(Some(0)).collect();
+                    MessageBoxW(
+                        std::ptr::null_mut(),
+                        text.as_ptr(),
+                        title.as_ptr(),
+                        MB_OK | MB_ICONERROR,
+                    );
+                }
+            }
             std::process::exit(1);
         }
     };
