@@ -4,13 +4,17 @@ Rewards Desktop 是本仓库基于 [TheNetsky/Microsoft-Rewards-Script](https://
 
 应用内置 Node.js 和 Chromium，使用时无需安装 Git、Node.js、Docker 或 WSL。已验证环境为 Windows 11 x64；其他 Windows 版本、其他地区与多账号桌面使用尚未完成验证。
 
-当前仓库桌面版本为 **0.1.9（待发布）**。本指南包含 0.1.9 更新功能说明；以下保留 0.1.8 下载入口，0.1.9 安装包以发布页实际提供的文件为准。
+当前桌面版本为 **0.1.9**。请从 GitHub Release 的 **Assets** 下载发布文件。
 
 ## 下载与首次运行
 
-- **推荐安装版**：[Rewards-Desktop-0.1.8-x64.exe](https://github.com/niko4570/Microsoft-Rewards-Script/releases/download/desktop-v0.1.8/Rewards-Desktop-0.1.8-x64.exe)，下载后按向导安装。
-- **便携版**：[Rewards-Desktop-0.1.8-x64.zip](https://github.com/niko4570/Microsoft-Rewards-Script/releases/download/desktop-v0.1.8/Rewards-Desktop-0.1.8-x64.zip)，解压到单独目录后运行 `Rewards Desktop.exe`。
-- **发布说明与校验文件**：[0.1.8 发布页](https://github.com/niko4570/Microsoft-Rewards-Script/releases/tag/desktop-v0.1.8)。后续版本请查看本仓库的 [Releases](https://github.com/niko4570/Microsoft-Rewards-Script/releases)。
+打开 [0.1.9 发布页](https://github.com/niko4570/Microsoft-Rewards-Script/releases/tag/desktop-v0.1.9)，在 **Assets** 中选择：
+
+- **推荐安装版**：`Rewards-Desktop-0.1.9-x64.exe`，下载后按向导安装。
+- **便携版**：`Rewards-Desktop-0.1.9-x64.zip`，解压到单独目录后运行 `Rewards Desktop.exe`。
+- **校验文件**：`SHA256SUMS.txt`；**对应源码**：`rewards-desktop-source.zip`。
+
+后续版本请查看本仓库的 [Releases](https://github.com/niko4570/Microsoft-Rewards-Script/releases)。
 
 GitHub 的 **Code → Download ZIP**、**Source code (zip/tar.gz)** 和 `rewards-desktop-source-*.zip` 均为源码，需要自行构建。上游脚本发布包也不包含本 fork 的桌面安装程序。
 

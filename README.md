@@ -2,7 +2,7 @@
 
 本项目是基于 [TheNetsky/Microsoft-Rewards-Script](https://github.com/TheNetsky/Microsoft-Rewards-Script) 扩展的 **fork**，在上游 Microsoft Rewards 自动化脚本的基础上，增加了中文 Windows 桌面应用 **Rewards Desktop**，并针对中国区域单账号的日常任务流程做了适配。
 
-**Windows 用户可以直接下载安装包使用，无需安装 Git、Node.js、Docker 或 WSL。** 当前仓库桌面版本为 **0.1.9（待发布）**，已验证环境为 Windows 11 x64。下方保留 0.1.8 预览版下载入口，0.1.9 安装包以发布页实际提供的文件为准。
+**Windows 用户可以直接下载安装包使用，无需安装 Git、Node.js、Docker 或 WSL。** 当前桌面版本为 **0.1.9**，已验证环境为 Windows 11 x64。安装程序和便携包均在 GitHub Release 的 **Assets** 中提供。
 
 ## 项目来源与扩展
 
@@ -13,16 +13,14 @@
 
 ## Windows 下载
 
-**以下为 0.1.8 预览版下载入口，首次使用推荐安装版 EXE：**
+前往 [Rewards Desktop 0.1.9 发布页](https://github.com/niko4570/Microsoft-Rewards-Script/releases/tag/desktop-v0.1.9)，展开 **Assets** 下载：
 
-| 下载内容                       | 链接                                                                                                                                                            | 用途                                       |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| Windows x64 安装版，约 259 MiB | [下载 Rewards-Desktop-0.1.8-x64.exe](https://github.com/niko4570/Microsoft-Rewards-Script/releases/download/desktop-v0.1.8/Rewards-Desktop-0.1.8-x64.exe)       | 按向导安装后打开应用                       |
-| Windows x64 便携版，约 359 MiB | [下载 Rewards-Desktop-0.1.8-x64.zip](https://github.com/niko4570/Microsoft-Rewards-Script/releases/download/desktop-v0.1.8/Rewards-Desktop-0.1.8-x64.zip)       | 解压到单独目录，运行 `Rewards Desktop.exe` |
-| SHA-256 校验文件               | [下载 SHA256SUMS.txt](https://github.com/niko4570/Microsoft-Rewards-Script/releases/download/desktop-v0.1.8/SHA256SUMS.txt)                                     | 核对安装包、便携包和发布源码               |
-| 0.1.8 对应源码                 | [下载 rewards-desktop-source-0.1.8.zip](https://github.com/niko4570/Microsoft-Rewards-Script/releases/download/desktop-v0.1.8/rewards-desktop-source-0.1.8.zip) | 查看代码或自行构建                         |
+- `Rewards-Desktop-0.1.9-x64.exe`：推荐安装版。
+- `Rewards-Desktop-0.1.9-x64.zip`：便携版，解压后运行 `Rewards Desktop.exe`。
+- `SHA256SUMS.txt`：发布文件的 SHA-256 校验值。
+- `rewards-desktop-source.zip`：该版本的对应源码，用于查看或自行构建。
 
-[查看 0.1.8 发布说明](https://github.com/niko4570/Microsoft-Rewards-Script/releases/tag/desktop-v0.1.8) · [查看所有版本](https://github.com/niko4570/Microsoft-Rewards-Script/releases) · [桌面版更新记录](desktop/CHANGELOG.md)
+[查看所有版本](https://github.com/niko4570/Microsoft-Rewards-Script/releases) · [桌面版更新记录](desktop/CHANGELOG.md)
 
 > **如何选文件？** 想直接使用桌面应用，请选上面的安装版或便携版。GitHub 的 **Code → Download ZIP**、发布页的 **Source code (zip/tar.gz)**，以及 `rewards-desktop-source-*.zip` 都是源码，需要自行安装依赖和构建。
 >
@@ -101,7 +99,7 @@ git clone https://github.com/niko4570/Microsoft-Rewards-Script.git
 cd Microsoft-Rewards-Script
 ```
 
-Or, download the corresponding source archive from [Releases](https://github.com/niko4570/Microsoft-Rewards-Script/releases) and extract it. For desktop 0.1.8, the source archive is `rewards-desktop-source-0.1.8.zip`; the `Rewards-Desktop-*-x64.zip` archive is a packaged Windows app, not a script source checkout.
+Or, download the corresponding source archive from [Releases](https://github.com/niko4570/Microsoft-Rewards-Script/releases) and extract it. For desktop 0.1.9, the source archive is `rewards-desktop-source.zip`; the `Rewards-Desktop-*-x64.zip` archive is a packaged Windows app, not a script source checkout.
 
 ## Account Setup
 

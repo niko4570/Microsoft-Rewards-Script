@@ -72,6 +72,7 @@ jobs:
         permissions:
             contents: write
         steps:
+            - uses: actions/checkout@v4
             - uses: actions/download-artifact@v4
               with:
                   name: rewards-desktop-windows-x64
@@ -81,8 +82,8 @@ jobs:
               with:
                   tag_name: ${{ github.ref_name }}
                   name: Rewards Desktop ${{ github.ref_name }}
-                  generate_release_notes: true
-                  make_latest: false
+                  body_path: desktop/RELEASE_NOTES.md
+                  make_latest: true
                   fail_on_unmatched_files: true
                   files: |
                       release/**/*.exe
