@@ -71,7 +71,23 @@ export function plan(cwd = process.cwd(), publishedTags = null) {
             }
         })
         const files = (baseline ? git('diff', '--name-only', `${baseline}..HEAD`) : git('ls-files')).split('\n')
-        const changed = files.filter(file => affects(file, component))
+        // A Docker-only release bumps the root package version. Do not let that
+        // bookkeeping commit cause an unrelated desktop release on the next push.
+        const authored = baseline
+            ? new Set(
+                  git(
+                      'log',
+                      '--format=',
+                      '--name-only',
+                      '--diff-merges=first-parent',
+                      '--fixed-strings',
+                      '--invert-grep',
+                      '--grep=chore(release): reserve automatic versions [skip ci]',
+                      `${baseline}..HEAD`
+                  ).split('\n')
+              )
+            : null
+        const changed = files.filter(file => affects(file, component) && (authored === null || authored.has(file)))
         outputs[component] = String(changed.length > 0)
         if (!changed.length) continue
         const manifest = component === 'desktop' ? 'desktop/package.json' : 'package.json'

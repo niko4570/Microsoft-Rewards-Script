@@ -140,3 +140,15 @@ test('draft and prerelease tags do not mark pending runtime changes as published
     assert.equal(output.desktop_tag, 'desktop-v0.2.1')
     assert.equal(output.docker, 'false')
 })
+
+test('Docker version bookkeeping cannot cause a desktop release on a later test-only push', t => {
+    const f = fixture(t)
+    f.write('scripts/docker/entrypoint.sh', 'fixed entrypoint')
+    f.commit('fix: Docker startup')
+    assert.equal(plan(f.cwd).desktop, 'false')
+    f.commit('chore(release): reserve automatic versions [skip ci]')
+    f.git('tag', 'v4.3.3')
+    f.write('scripts/tests/extra.test.js', 'test-only change')
+    f.commit('test: extra coverage')
+    assert.deepEqual(plan(f.cwd), { desktop: 'false', docker: 'false' })
+})
