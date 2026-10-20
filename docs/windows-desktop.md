@@ -106,6 +106,25 @@ If the backend disconnects, export diagnostics and use **重启后台**. Stop ac
 tasks before changing settings or clearing data. Clearing data removes account
 state, sessions, reports, and logs and disables Windows startup.
 
+## Continuous integration
+
+The **CI** workflow (`.github/workflows/ci.yml`) runs on every branch push, pull
+request and manual invocation. Node.js 24 checks run on both Ubuntu and Windows:
+ESLint, backend compilation and task/dashboard/OAuth tests, desktop compilation,
+log parsing, scheduling, and desktop service/updater tests. New runs cancel older
+runs for the same event and branch or pull request. The Linux job also runs the
+Docker shell scheduler integration that is skipped on Windows.
+
+These checks do not need Microsoft credentials or real browser sessions. Electron
+binary downloads are skipped because these tests mock browser launches; actual UI,
+Windows packaging and installer checks remain in the separate Windows workflows.
+The existing formatting workflow checks pull requests separately.
+
+After this workflow is pushed, its results appear under **Actions → CI** and in
+pull request checks. To require passing CI before merging, add
+`Checks (ubuntu-latest)` and `Checks (windows-latest)` to the target branch's required
+status checks in GitHub branch protection or rulesets.
+
 ## Build from source
 
 Use Node.js 24 and install root and desktop dependencies separately:
