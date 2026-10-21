@@ -259,3 +259,29 @@ test('daily streak timer reads the server timestamp and excludes unrelated or in
     assert.equal(parse([{ expiresAt: 'invalid', prefix: 'Daily streaks reset' }]).nextStreakResetAt, null)
     assert.equal(parse([]).nextStreakResetAt, null)
 })
+
+test('current-page search quota maps actual pointsCounters rather than streak or level benefits', () => {
+    const snapshot = parse([account, {
+        pointsCounters: { dailyOffer: 115, pc: { max: 60, progress: 3, originalMax: 60 }, totalPoints: 118 }
+    }, { dailyPoints: [3, 3, 100], activitiesTotal: 1, activitiesCompleted: 1 },
+    { pointsPerSearch: 3, pointsRemaining: 500, levelBenefits: [{ max: 420 }] }])
+    const data = mapEarnToDashboard(snapshot, today)
+    assert.deepEqual(data.dashboard.userStatus.counters.pcSearch, [{ offerId: 'pc', pointProgress: 3, pointProgressMax: 60 }])
+    assert.deepEqual(data.dashboard.userStatus.counters.mobileSearch, [])
+    const mobile = parse([account, { pointsCounters: { pc: { max: 90, progress: 90 }, mobile: { max: 60, progress: 6 } } }])
+    assert.equal(mobile.searchCounters.mobileSearch[0].pointProgress, 6)
+    for (const pc of [{ max: 60, progress: 61 }, { max: '60', progress: 3 }, { max: -1, progress: 0 }]) {
+        assert.equal(parse([account, { pointsCounters: { pc } }]).searchCounters, null)
+    }
+    assert.equal(parse([account]).searchCounters, null)
+})
+
+test('task search progress rejects absent quotas instead of declaring success', async () => {
+    const { SearchProgress } = require('../../dist/functions/activities/search/SearchProgress')
+    const snapshot = parse([account])
+    const progress = new SearchProgress({
+        config: { tasksOnly: true },
+        browser: { func: { getDashboardData: async () => mapEarnToDashboard(snapshot, today) } }
+    })
+    await assert.rejects(progress.getMissing(false), /未读取到普通搜索额度/)
+})

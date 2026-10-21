@@ -19,7 +19,12 @@ export function mapEarnToDashboard(snapshot: PageSnapshot, today: string): Dashb
             // Consumers must honor availablePointsKnown; zero is only the legacy shape's placeholder.
             availablePoints: pointsKnown ? balance : 0,
             isRewardsUser: true,
-            counters: { pcSearch: [], mobileSearch: [], activityAndQuiz: [], dailyPoint: [] }
+            counters: {
+                pcSearch: snapshot.searchCounters?.pcSearch ?? [],
+                mobileSearch: snapshot.searchCounters?.mobileSearch ?? [],
+                activityAndQuiz: [],
+                dailyPoint: []
+            }
         },
         userWarnings: (snapshot.warnings ?? []).map(name => ({ name })),
         userProfile: profile,

@@ -185,7 +185,7 @@ export class DesktopService extends EventEmitter {
             }
             this.settings = next
             this.scheduler.reset()
-            if (next.email !== previous.email) {
+            if (next.email !== previous.email || next.mode !== previous.mode) {
                 await this.backend.close()
                 await this.backend.start()
             }

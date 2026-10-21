@@ -678,3 +678,48 @@ test('concurrent recovery reserves only one compensation', async t => {
     assert.equal(f.events.length, 3) // two initial requests and one compensation
     assert.equal((await fs.readdir(path.join(f.directory, 'app-checkin-recovery'))).length, 1)
 })
+
+test('ordinary searches extend the same task workflow and remain disabled in task mode', async () => {
+    const f = fixture([offer('daily')])
+    let searches = 0
+    const search = async () => {
+        searches++
+        f.events.push('ordinary-search')
+        f.data.dashboard.userStatus.availablePoints += 3
+        return [{ id: 'ordinary-mobile-search', title: '手机普通搜索', status: 'completed', reason: 'quota confirmed' }]
+    }
+    await f.runner.run(f.data, f.app, undefined, search)
+    assert.equal(searches, 0)
+    f.bot.config.workers.doMobileSearch = true
+    await f.runner.run(f.data, f.app, undefined, search)
+    assert.equal(searches, 1)
+    assert.ok(f.events.indexOf('daily') < f.events.indexOf('ordinary-search'))
+    assert.equal(f.runner.report.finalPoints, 103)
+    assert.equal(f.runner.report.tasks.at(-1).id, 'ordinary-mobile-search')
+})
+
+test('ordinary search skips complete quotas, verifies remaining points and isolates platform failures', async () => {
+    const { runTaskSearches } = loadCompiled('../../dist/functions/TaskSearch')
+    const f = fixture()
+    Object.assign(f.bot.config.workers, { doMobileSearch: true, doDesktopSearch: true })
+    let mobileMissing = 0, desktopMissing = 6
+    const manager = { getSearchPoints: async () => ({ mobileMissing, desktopMissing }) }
+    const searched = []
+    let results = await runTaskSearches(f.bot, manager, async mobile => {
+        searched.push(mobile)
+        desktopMissing = 3
+        return 3
+    })
+    assert.deepEqual(searched, [false])
+    assert.equal(results[0].status, 'completed')
+    assert.equal(results[1].status, 'unconfirmed')
+    assert.equal(results[1].after, 3)
+    mobileMissing = 3
+    results = await runTaskSearches(f.bot, manager, async mobile => {
+        if (mobile) throw new Error('test failure')
+        desktopMissing = 0
+        return 3
+    })
+    assert.equal(results[0].status, 'failed')
+    assert.equal(results[1].status, 'completed')
+})

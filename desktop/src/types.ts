@@ -1,5 +1,6 @@
 export interface Settings {
     email: string
+    mode: 'tasks' | 'tasks-search'
     schedule: { enabled: boolean }
     startOnLogin: boolean
 }

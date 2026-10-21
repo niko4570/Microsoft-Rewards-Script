@@ -19,6 +19,15 @@ export class SearchProgress {
 
     public async getCounters(): Promise<Counters> {
         const dashboard = await this.bot.browser.func.getDashboardData()
+        if (
+            this.bot.config.tasksOnly &&
+            !(
+                dashboard.dashboard.userStatus.counters.pcSearch?.length ||
+                dashboard.dashboard.userStatus.counters.mobileSearch?.length
+            )
+        ) {
+            throw new Error('未读取到普通搜索额度，不能确认搜索积分已完成')
+        }
         return dashboard.dashboard.userStatus.counters
     }
 

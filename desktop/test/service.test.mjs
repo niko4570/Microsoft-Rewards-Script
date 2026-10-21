@@ -57,15 +57,38 @@ function fixture(t, savedSettings) {
     return { service, backend, dataDirectory }
 }
 
+test('mode changes persist, restart the backend, and cannot happen during a run', async t => {
+    const { service, backend } = fixture(t)
+    let restarts = 0
+    backend.start = async () => {
+        backend.endpoint = 'local'
+        restarts++
+    }
+    await service.saveSettings({ ...service.settings, mode: 'tasks-search' })
+    assert.equal(restarts, 1)
+    assert.equal(JSON.parse(fs.readFileSync(path.join(service.dataDirectory, 'desktop.json'))).mode, 'tasks-search')
+    backend.state = 'running'
+    await assert.rejects(service.saveSettings({ ...service.settings, mode: 'tasks' }), /正在运行/)
+    assert.equal(service.settings.mode, 'tasks-search')
+    backend.state = 'idle'
+    await service.saveSettings({ ...service.settings, mode: 'tasks' })
+    assert.equal(restarts, 2)
+    assert.equal(service.settings.mode, 'tasks')
+})
+
 test('startup with saved automatic settings runs point cards even when streaks are complete', async t => {
     const require = createRequire(import.meta.url)
     const ReactFunc = require('../../dist/browser/ReactFunc.js').default
     const { hasPendingEarnTasks } = require('../../dist/functions/TaskPolicy.js')
     const { service, backend } = fixture(t, {
-        email: 'person@example.com', startOnLogin: true, schedule: { enabled: true }
+        email: 'person@example.com',
+        startOnLogin: true,
+        schedule: { enabled: true }
     })
     backend.sessions = ['mobile', 'desktop'].map(platform => ({
-        email: 'person@example.com', platform, hasStorageState: true
+        email: 'person@example.com',
+        platform,
+        hasStorageState: true
     }))
     const objects = [
         { balance: 123, level: 1 },
@@ -73,7 +96,10 @@ test('startup with saved automatic settings runs point cards even when streaks a
         { offerId: 'point-card', hash: 'signed', points: 5, destination: 'https://www.bing.com/search?q=test' }
     ]
     const html = `<script>self.__next_f.push([1,${JSON.stringify(JSON.stringify(objects))}])</script>`
-    const snapshot = new ReactFunc({ logger: { info() {}, debug() {}, warn() {}, error() {} }, isMobile: false }).snapshotPage(html)
+    const snapshot = new ReactFunc({
+        logger: { info() {}, debug() {}, warn() {}, error() {} },
+        isMobile: false
+    }).snapshotPage(html)
     service.resetScanner = async () => ({
         nextStreakResetAt: new Date(Date.now() + 3600000).toISOString(),
         pending: hasPendingEarnTasks(snapshot, '10/14/2026')
