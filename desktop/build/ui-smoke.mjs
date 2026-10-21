@@ -12,9 +12,10 @@ import { fileURLToPath } from 'node:url'
 if (process.platform !== 'win32') throw new Error('Tauri WebView2 UI smoke requires Windows')
 const directory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(path.resolve(directory, '../package.json'))
-const { chromium } = require('patchright')
-// Patchright evaluates in an isolated world by default; inspect the app's actual realm.
-const mainWorld = (page, operation) => page.evaluate(operation, undefined, false)
+// Use standard CDP automation for WebView2; Patchright's eager request interception
+// can reject outside connectOverCDP when a startup target closes.
+const { chromium } = require('playwright-core')
+const mainWorld = (page, operation) => page.evaluate(operation)
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'rewards-tauri-smoke-'))
 // Seed an existing account slot to check upgrade persistence without opening login.
 fs.writeFileSync(
