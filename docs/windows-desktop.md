@@ -272,36 +272,54 @@ license files, and renderer licenses. Provide the corresponding source archive a
    component with its last reachable release tag; documentation and test-only changes
    do not create versions. Desktop and Docker changes are evaluated separately;
    shared backend changes affect both.
-2. The workflow reserves versions in a bot commit on `v4` and synchronizes npm
-   manifests/lockfiles plus the desktop Cargo manifest/lockfile. An explicit version
-   higher than existing tags is preserved; otherwise `feat:` increments minor,
-   breaking Conventional Commits increment major, and other runtime changes increment
-   patch. A new backend major requires a new release branch rather than publishing
-   v5 from `v4`.
-3. Linux/Windows CI validates that exact commit. Windows builds additionally run Rust
-   tests, packaged WebView2 checks and installed-app checks. Only after these succeed
-   are desktop assets uploaded to a draft and published with the automatic tag as
-   the latest Release. Docker builds/pushes its versioned multi-platform image after
-   CI succeeds, then promotes `:4` / `:latest` and creates its own script Release.
-   Script releases do not replace the desktop GitHub Latest marker.
-4. Failed checks do not publish a desktop release or promote a Docker image. The bot
-   version commit can remain on `v4`; rerun **Publish v4 updates** to retry that
-   unpublished version. If another update reached `v4`, the older build refuses
-   promotion and the queued run covers pending changes since the last tag. A failed
-   desktop asset upload can leave an unpublished draft; rerunning uploads the assets
-   before making it public. Do not manually reuse or move a published version tag.
-5. Check the resulting assets, release notes and checksums. Hosted UI tests do not
+2. The planner records the triggering source commit and component versions in one
+   release-plan artifact without modifying the checkout. An explicit version higher
+   than existing tags is preserved; otherwise `feat:` increments minor, breaking
+   Conventional Commits increment major, and other runtime changes increment patch.
+   A new backend major requires a new release branch rather than publishing v5 from
+   `v4`. Published stable releases remain the version authority; repository manifests
+   are version hints and are no longer automatically updated after every release.
+3. Linux/Windows CI, desktop packaging and Docker publishing download the same plan,
+   verify that its source SHA matches their checkout, and stamp npm manifests/lockfiles
+   plus the desktop Cargo manifest/lockfile only in the build workspace. No release
+   step creates a commit or pushes to `v4`.
+4. Linux/Windows CI validates that exact source with the planned versions applied.
+   Windows builds additionally run Rust tests, packaged WebView2 checks and
+   installed-app checks. Only after these succeed are desktop assets uploaded to a
+   draft and published with a tag pointing to the original source commit. Docker
+   builds/pushes its versioned multi-platform image after CI succeeds, then promotes
+   `:4` / `:latest` and creates its own script Release. Script releases do not replace
+   the desktop GitHub Latest marker.
+5. Both component releases include a corresponding source ZIP with the effective
+   version files used during the build. Its `RELEASE-BUILD.json` records the original
+   source SHA, effective component versions and SHA-256 hashes of the version files.
+   The desktop source ZIP is covered by `SHA256SUMS.txt`; the script source ZIP has
+   its own `.sha256` file. GitHub's automatically generated tag source archives still
+   reflect the original commit's version hints; use the attached corresponding-source
+   ZIP to reproduce the exact build versions.
+6. Failed checks do not publish a desktop release or promote a Docker image. Rerun
+   **Publish v4 updates** to retry an unpublished version. A retry computes the plan
+   from published releases, not from a reservation commit. If another update reached
+   `v4`, an older build refuses promotion and the queued run covers pending changes
+   since the last tag. A failed desktop asset upload can leave an unpublished draft;
+   rerunning uploads the assets before making it public. Do not manually reuse or
+   move a published version tag.
+7. Check the resulting assets, release notes and checksums. Hosted UI tests do not
    validate real Microsoft login/tasks, upgrade on a user's machine, sleep/resume or
    code signing. Verify those separately when relevant. The desktop test workflow
-   can still be run manually without publishing, and an explicit matching
-   `desktop-vX.Y.Z` tag also runs validation and publication.
+   can still be run manually without publishing. An explicit `desktop-vX.Y.Z` tag
+   can also run validation/publication when the source manifests already match that
+   tag; retry automatic releases through the release controller so they receive
+   the complete version plan.
 
 The release controller runs directly on pushes to `v4` (including merges), using
-`GITHUB_TOKEN`; bot version commits do not recursively trigger workflows. Reusable
-workflows explicitly receive the reserved commit, so no personal access token is
-required. Branch rules must permit the Actions bot's version commit. Releases are
-serialized and do not cancel in progress. If branch protection rejects the bot push,
-the workflow fails before publication; it never force-pushes or bypasses protection.
+`GITHUB_TOKEN`. It pins every reusable workflow to the original source SHA and
+shares one immutable version plan; its planning job has read-only contents access.
+Only the component publication jobs receive write permission for tags, Releases
+and packages. Neither a personal access token nor a branch-protection bypass is
+needed. Releases are serialized and do not cancel in progress. Manual controller
+runs on other branches are skipped. This workflow change does not configure branch
+protection; PR and required-check rules can be enabled separately after review.
 
 The updater selects the highest numeric `desktop-vX.Y.Z` release and ignores script
 releases, drafts and prereleases. Publish both the installer and checksum file;

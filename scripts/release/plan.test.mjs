@@ -5,6 +5,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { affects, nextVersion, plan } from './plan.mjs'
+import { createManifest, applyManifest, versionFiles } from './versions.mjs'
+import { sourceArchive } from './source-archive.mjs'
+import { inflateRawSync } from 'node:zlib'
+import { createHash } from 'node:crypto'
 
 // Real Git fixtures verify baselines, retries and all four desktop version files.
 function fixture(t) {
@@ -86,13 +90,14 @@ test('desktop release synchronizes JSON, lockfiles and only the native app crate
     const output = plan(f.cwd)
     assert.equal(output.desktop_tag, 'desktop-v0.2.1')
     assert.equal(output.docker, 'false')
+    assert.equal(f.git('status', '--porcelain'), '', 'planning must not modify the checkout')
+    applyManifest(f.cwd, createManifest(f.cwd, output))
     assert.equal(f.json('desktop/package.json').version, '0.2.1')
     assert.equal(f.json('desktop/package-lock.json').packages[''].version, '0.2.1')
     const cargo = fs.readFileSync(path.join(f.cwd, 'desktop/src-tauri/Cargo.lock'), 'utf8')
     assert.match(cargo, /name = "other"\nversion = "9.0.0"/)
     assert.match(cargo, /name = "rewards-desktop"\nversion = "0.2.1"/)
-    f.commit('chore(release): reserve automatic versions [skip ci]')
-    assert.deepEqual(plan(f.cwd), output, 'a failed build retries its reserved version')
+    assert.deepEqual(plan(f.cwd), output, 'a failed build retries the same planned version without a commit')
     f.git('tag', output.desktop_tag)
     assert.deepEqual(plan(f.cwd), { desktop: 'false', docker: 'false' })
 })
@@ -102,9 +107,10 @@ test('shared feature releases both components; Docker-only fixes release only Do
     f.write('src/index.ts', 'feature')
     f.commit('feat: new task')
     assert.equal(plan(f.cwd).docker_tag, 'v4.4.0')
+    applyManifest(f.cwd, createManifest(f.cwd, plan(f.cwd)))
     assert.equal(f.json('package-lock.json').version, '4.4.0')
     assert.equal(f.json('desktop/package.json').version, '0.3.0')
-    f.commit('chore(release): reserve versions')
+    f.git('restore', '--', ...versionFiles)
     f.git('tag', 'v4.4.0')
     f.git('tag', 'desktop-v0.3.0')
     f.write('scripts/docker/entrypoint.sh', 'fix Docker startup')
@@ -146,9 +152,110 @@ test('Docker version bookkeeping cannot cause a desktop release on a later test-
     f.write('scripts/docker/entrypoint.sh', 'fixed entrypoint')
     f.commit('fix: Docker startup')
     assert.equal(plan(f.cwd).desktop, 'false')
+    applyManifest(f.cwd, createManifest(f.cwd, plan(f.cwd)))
     f.commit('chore(release): reserve automatic versions [skip ci]')
     f.git('tag', 'v4.3.3')
     f.write('scripts/tests/extra.test.js', 'test-only change')
     f.commit('test: extra coverage')
     assert.deepEqual(plan(f.cwd), { desktop: 'false', docker: 'false' })
+})
+
+// Read stored/deflated ZIP entries without platform-specific archive tools.
+function zipEntry(file, name) {
+    const zip = fs.readFileSync(file)
+    const end = zip.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]))
+    let offset = zip.readUInt32LE(end + 16)
+    const count = zip.readUInt16LE(end + 10)
+    for (let i = 0; i < count; i++) {
+        const nameLength = zip.readUInt16LE(offset + 28)
+        const extraLength = zip.readUInt16LE(offset + 30)
+        const commentLength = zip.readUInt16LE(offset + 32)
+        const entryName = zip.subarray(offset + 46, offset + 46 + nameLength).toString()
+        if (entryName === name) {
+            const local = zip.readUInt32LE(offset + 42)
+            const start = local + 30 + zip.readUInt16LE(local + 26) + zip.readUInt16LE(local + 28)
+            const content = zip.subarray(start, start + zip.readUInt32LE(offset + 20))
+            return (zip.readUInt16LE(offset + 10) === 8 ? inflateRawSync(content) : content).toString()
+        }
+        offset += 46 + nameLength + extraLength + commentLength
+    }
+    return null
+}
+
+test('release plan CLI is read-only and every consumer applies the exact same pinned versions', t => {
+    const f = fixture(t)
+    f.write('src/index.ts', 'new feature')
+    f.commit('feat: new task')
+    const before = f.git('rev-parse', 'HEAD')
+    const artifact = path.join(os.tmpdir(), `release-plan-${path.basename(f.cwd)}.json`)
+    t.after(() => fs.rmSync(artifact, { force: true }))
+    execFileSync(process.execPath, [path.resolve('scripts/release/plan.mjs'), '--output', artifact], { cwd: f.cwd })
+    assert.equal(f.git('status', '--porcelain'), '')
+    const manifest = JSON.parse(fs.readFileSync(artifact))
+    assert.equal(manifest.sourceSha, before)
+    assert.deepEqual(manifest.versions, { desktop: '0.3.0', docker: '4.4.0' })
+    execFileSync(process.execPath, [path.resolve('scripts/release/versions.mjs'), artifact], { cwd: f.cwd })
+    const stamped = versionFiles.map(file => fs.readFileSync(path.join(f.cwd, file), 'utf8'))
+    f.git('restore', '--', ...versionFiles)
+    applyManifest(f.cwd, manifest)
+    assert.deepEqual(
+        versionFiles.map(file => fs.readFileSync(path.join(f.cwd, file), 'utf8')),
+        stamped
+    )
+    assert.equal(f.git('rev-parse', 'HEAD'), before)
+    assert.equal(f.git('show', 'HEAD:desktop/package.json'), '{"name":"fixture","version":"0.2.0"}')
+})
+
+test('invalid or stale manifests and missing native files fail before changing versions', t => {
+    const f = fixture(t)
+    f.write('src/index.ts', 'new feature')
+    f.commit('feat: new task')
+    const manifest = createManifest(f.cwd, plan(f.cwd))
+    const original = fs.readFileSync(path.join(f.cwd, 'desktop/package.json'), 'utf8')
+    for (const value of [
+        { ...manifest, sourceSha: '0'.repeat(40) },
+        { ...manifest, schemaVersion: 2 },
+        { ...manifest, versions: { ...manifest.versions, desktop: '1.0.0-beta' } },
+        { ...manifest, versions: { ...manifest.versions, docker: '5.0.0' } },
+        { ...manifest, versions: {} }
+    ]) {
+        assert.throws(() => applyManifest(f.cwd, value), /Invalid|does not match|new major/)
+        assert.equal(fs.readFileSync(path.join(f.cwd, 'desktop/package.json'), 'utf8'), original)
+    }
+    f.write('desktop/src-tauri/Cargo.lock', 'missing application crate')
+    assert.throws(() => applyManifest(f.cwd, manifest), /Cannot update crate/)
+    assert.equal(fs.readFileSync(path.join(f.cwd, 'desktop/package.json'), 'utf8'), original)
+})
+
+test('source archive matches stamped versions, records source identity, and leaves refs and index untouched', t => {
+    const f = fixture(t)
+    f.write('src/index.ts', 'new feature')
+    f.commit('feat: new task')
+    const manifest = createManifest(f.cwd, plan(f.cwd))
+    applyManifest(f.cwd, manifest)
+    f.write('.env', 'SECRET=must-not-enter-source-archive')
+    const indexBefore = f.git('write-tree')
+    const refsBefore = f.git('show-ref')
+    const output = path.join(f.cwd, 'release/source.zip')
+    const metadata = sourceArchive(f.cwd, output)
+    assert.equal(metadata.sourceSha, manifest.sourceSha)
+    assert.deepEqual(metadata.versions, manifest.versions)
+    for (const file of versionFiles) {
+        const text = fs.readFileSync(path.join(f.cwd, file), 'utf8')
+        assert.equal(zipEntry(output, file), text, file)
+        assert.equal(metadata.versionFiles[file], createHash('sha256').update(text).digest('hex'))
+    }
+    assert.deepEqual(JSON.parse(zipEntry(output, 'RELEASE-BUILD.json')), {
+        schemaVersion: metadata.schemaVersion,
+        sourceSha: metadata.sourceSha,
+        versions: metadata.versions,
+        versionFiles: metadata.versionFiles
+    })
+    assert.equal(zipEntry(output, '.env'), null)
+    assert.equal(f.git('write-tree'), indexBefore)
+    assert.equal(f.git('show-ref'), refsBefore)
+    assert.equal(
+        fs.readFileSync(`${output}.sha256`, 'utf8').split(' ')[0],
+        createHash('sha256').update(fs.readFileSync(output)).digest('hex')
+    )
 })

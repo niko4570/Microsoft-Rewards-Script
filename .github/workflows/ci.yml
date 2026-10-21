@@ -8,6 +8,9 @@ on:
             ref:
                 type: string
                 default: ''
+            release-plan:
+                type: string
+                default: ''
 
 permissions:
     contents: read
@@ -39,6 +42,15 @@ jobs:
                   cache-dependency-path: |
                       package-lock.json
                       desktop/package-lock.json
+            - name: Download build version plan
+              if: inputs.release-plan != ''
+              uses: actions/download-artifact@v4
+              with:
+                  name: ${{ inputs.release-plan }}
+                  path: ${{ runner.temp }}/release-plan
+            - name: Apply build-only versions
+              if: inputs.release-plan != ''
+              run: node scripts/release/versions.mjs "${{ runner.temp }}/release-plan/release-plan.json"
             - name: Install backend dependencies
               run: npm ci
             - name: Check formatting of pull request changes
