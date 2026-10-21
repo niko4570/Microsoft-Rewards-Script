@@ -7,6 +7,9 @@ on:
             ref:
                 type: string
                 default: ''
+            release-plan:
+                type: string
+                default: ''
             release-tag:
                 type: string
                 default: ''
@@ -32,6 +35,15 @@ jobs:
                   cache-dependency-path: |
                       package-lock.json
                       desktop/package-lock.json
+            - name: Download build version plan
+              if: inputs.release-plan != ''
+              uses: actions/download-artifact@v4
+              with:
+                  name: ${{ inputs.release-plan }}
+                  path: ${{ runner.temp }}/release-plan
+            - name: Apply build-only versions
+              if: inputs.release-plan != ''
+              run: node scripts/release/versions.mjs "${{ runner.temp }}/release-plan/release-plan.json"
             - name: Verify desktop release tag
               if: startsWith(github.ref, 'refs/tags/desktop-v') || inputs.release-tag != ''
               shell: pwsh
@@ -87,7 +99,7 @@ jobs:
                   if-no-files-found: ignore
                   retention-days: 3
             - name: Corresponding source snapshot
-              run: git archive --format=zip --output=desktop/release/rewards-desktop-source.zip HEAD
+              run: node scripts/release/source-archive.mjs desktop/release/rewards-desktop-source.zip
             - name: Include source checksum
               run: node desktop/build/checksums.mjs
             - uses: actions/upload-artifact@v4

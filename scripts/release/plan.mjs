@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
+import { createManifest } from './versions.mjs'
 
 const versionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
 export function compare(left, right) {
@@ -46,13 +47,6 @@ export function nextVersion(current, latest, messages) {
 export function plan(cwd = process.cwd(), publishedTags = null) {
     const git = (...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim()
     const read = file => fs.readFileSync(path.join(cwd, file), 'utf8')
-    const write = (file, value) => fs.writeFileSync(path.join(cwd, file), value)
-    const updateJSON = (file, version) => {
-        const value = JSON.parse(read(file))
-        value.version = version
-        if (value.packages?.['']) value.packages[''].version = version
-        write(file, JSON.stringify(value, null, 4) + '\n')
-    }
     const outputs = {}
     for (const component of ['desktop', 'docker']) {
         const prefix = component === 'desktop' ? 'desktop-v' : 'v'
@@ -96,19 +90,6 @@ export function plan(cwd = process.cwd(), publishedTags = null) {
         const version = nextVersion(current, tags[0]?.slice(prefix.length), messages)
         if (component === 'docker' && !version.startsWith('4.'))
             throw new Error('v4 cannot publish a new major; prepare a new release branch')
-        updateJSON(manifest, version)
-        updateJSON(component === 'desktop' ? 'desktop/package-lock.json' : 'package-lock.json', version)
-        if (component === 'desktop') {
-            for (const file of ['desktop/src-tauri/Cargo.toml', 'desktop/src-tauri/Cargo.lock']) {
-                const source = read(file)
-                const pattern = /(name = "rewards-desktop"\r?\nversion = ")[^"]+(")/
-                // Match only this crate, never dependency versions.
-                const updated = source.replace(pattern, `$1${version}$2`)
-                if (updated === source && !source.includes(`name = "rewards-desktop"\nversion = "${version}"`))
-                    throw new Error(`Cannot update crate version in ${file}`)
-                write(file, updated)
-            }
-        }
         outputs[`${component}_tag`] = `${prefix}${version}`
         outputs[`${component}_version`] = version
     }
@@ -120,6 +101,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
         ? fs.readFileSync(process.env.PUBLISHED_TAGS_FILE, 'utf8').trim().split('\n')
         : null
     const outputs = plan(process.cwd(), publishedTags)
+    const manifest = createManifest(process.cwd(), outputs)
+    const args = process.argv.slice(2)
+    if (args.length) {
+        if (args.length !== 2 || args[0] !== '--output') throw new Error('Usage: plan.mjs [--output release-plan.json]')
+        fs.writeFileSync(args[1], JSON.stringify(manifest, null, 2) + '\n')
+    }
+    outputs.sha = manifest.sourceSha
     const lines =
         Object.entries(outputs)
             .map(([key, value]) => `${key}=${value}`)
