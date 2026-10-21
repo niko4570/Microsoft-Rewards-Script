@@ -702,7 +702,8 @@ test('ordinary search skips complete quotas, verifies remaining points and isola
     const { runTaskSearches } = loadCompiled('../../dist/functions/TaskSearch')
     const f = fixture()
     Object.assign(f.bot.config.workers, { doMobileSearch: true, doDesktopSearch: true })
-    let mobileMissing = 0, desktopMissing = 6
+    let mobileMissing = 0,
+        desktopMissing = 6
     const manager = { getSearchPoints: async () => ({ mobileMissing, desktopMissing }) }
     const searched = []
     let results = await runTaskSearches(f.bot, manager, async mobile => {
