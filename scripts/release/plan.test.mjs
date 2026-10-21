@@ -184,6 +184,7 @@ function zipEntry(file, name) {
 
 test('release plan CLI is read-only and every consumer applies the exact same pinned versions', t => {
     const f = fixture(t)
+    f.git('config', 'core.autocrlf', 'true')
     f.write('src/index.ts', 'new feature')
     f.commit('feat: new task')
     const before = f.git('rev-parse', 'HEAD')
@@ -229,6 +230,7 @@ test('invalid or stale manifests and missing native files fail before changing v
 
 test('source archive matches stamped versions, records source identity, and leaves refs and index untouched', t => {
     const f = fixture(t)
+    f.git('config', 'core.autocrlf', 'true')
     f.write('src/index.ts', 'new feature')
     f.commit('feat: new task')
     const manifest = createManifest(f.cwd, plan(f.cwd))

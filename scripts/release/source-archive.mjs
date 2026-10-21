@@ -11,7 +11,13 @@ import { sourceSha, versionFiles } from './versions.mjs'
 export function sourceArchive(cwd, output) {
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'rewards-source-'))
     const env = { ...process.env, GIT_INDEX_FILE: path.join(temporary, 'index') }
-    const git = (args, input) => execFileSync('git', args, { cwd, env, input, encoding: 'utf8' }).trim()
+    const git = (args, input) =>
+        execFileSync('git', ['-c', 'core.autocrlf=false', '-c', 'core.eol=lf', ...args], {
+            cwd,
+            env,
+            input,
+            encoding: 'utf8'
+        }).trim()
     try {
         const sha = sourceSha(cwd)
         git(['read-tree', sha])
@@ -19,7 +25,7 @@ export function sourceArchive(cwd, output) {
         for (const file of versionFiles) {
             const content = fs.readFileSync(path.join(cwd, file))
             files[file] = createHash('sha256').update(content).digest('hex')
-            const blob = git(['hash-object', '-w', '--stdin'], content)
+            const blob = git(['hash-object', '-w', '--no-filters', '--stdin'], content)
             git(['update-index', '--add', '--cacheinfo', `100644,${blob},${file}`])
         }
         const readVersion = file => JSON.parse(fs.readFileSync(path.join(cwd, file), 'utf8')).version
@@ -30,7 +36,7 @@ export function sourceArchive(cwd, output) {
             versionFiles: files
         }
         const text = JSON.stringify(metadata, null, 2) + '\n'
-        const blob = git(['hash-object', '-w', '--stdin'], text)
+        const blob = git(['hash-object', '-w', '--no-filters', '--stdin'], text)
         git(['update-index', '--add', '--cacheinfo', `100644,${blob},RELEASE-BUILD.json`])
         const tree = git(['write-tree'])
         const archive = path.resolve(cwd, output)

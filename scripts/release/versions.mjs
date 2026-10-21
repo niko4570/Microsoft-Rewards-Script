@@ -61,7 +61,7 @@ export function applyManifest(cwd, manifest) {
         }
         if (component === 'desktop') {
             for (const file of versionFiles.slice(4)) {
-                const source = read(file)
+                const source = read(file).replace(/\r\n/g, '\n')
                 const cratePattern = /(name = "rewards-desktop"\r?\nversion = ")[^"]+(")/
                 // Match this crate only; dependency versions remain unchanged.
                 if (!cratePattern.test(source)) throw new Error(`Cannot update crate version in ${file}`)
