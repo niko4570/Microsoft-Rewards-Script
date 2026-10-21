@@ -6,7 +6,7 @@ on:
         paths-ignore: ['**/*.md', 'docs/**', 'LICENSE']
     workflow_dispatch:
 
-# Serialize version reservations and publication; never interrupt a release.
+# Serialize planning and publication; never interrupt a release.
 concurrency:
     group: publish-v4
     cancel-in-progress: false
@@ -16,20 +16,20 @@ permissions:
 
 jobs:
     plan:
+        if: github.ref == 'refs/heads/v4'
         runs-on: ubuntu-latest
-        permissions:
-            contents: write
         outputs:
             desktop: ${{ steps.plan.outputs.desktop }}
             docker: ${{ steps.plan.outputs.docker }}
             desktop_tag: ${{ steps.plan.outputs.desktop_tag }}
             docker_tag: ${{ steps.plan.outputs.docker_tag }}
             docker_version: ${{ steps.plan.outputs.docker_version }}
-            sha: ${{ steps.commit.outputs.sha }}
+            sha: ${{ steps.plan.outputs.sha }}
+            manifest: release-plan-${{ github.run_attempt }}
         steps:
             - uses: actions/checkout@v4
               with:
-                  ref: v4
+                  ref: ${{ github.sha }}
                   fetch-depth: 0
             - uses: actions/setup-node@v4
               with:
@@ -45,21 +45,15 @@ jobs:
               id: plan
               env:
                   PUBLISHED_TAGS_FILE: ${{ runner.temp }}/published-tags.txt
-              run: node scripts/release/plan.mjs
-            - name: Reserve consistent package and native versions
-              id: commit
-              shell: bash
-              run: |
-                  set -euo pipefail
-                  git config user.name 'github-actions[bot]'
-                  git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-                  git add package.json package-lock.json desktop/package.json desktop/package-lock.json desktop/src-tauri/Cargo.toml desktop/src-tauri/Cargo.lock
-                  if ! git diff --cached --quiet; then
-                    git commit -m 'chore(release): reserve automatic versions [skip ci]'
-                    # A concurrent human push causes a safe failure, never a force push.
-                    git push origin HEAD:refs/heads/v4
-                  fi
-                  echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+              run: node scripts/release/plan.mjs --output "${{ runner.temp }}/release-plan.json"
+            - name: Share immutable build version plan
+              if: steps.plan.outputs.desktop == 'true' || steps.plan.outputs.docker == 'true'
+              uses: actions/upload-artifact@v4
+              with:
+                  name: release-plan-${{ github.run_attempt }}
+                  path: ${{ runner.temp }}/release-plan.json
+                  if-no-files-found: error
+                  retention-days: 30
 
     checks:
         needs: plan
@@ -67,6 +61,7 @@ jobs:
         uses: ./.github/workflows/ci.yml
         with:
             ref: ${{ needs.plan.outputs.sha }}
+            release-plan: ${{ needs.plan.outputs.manifest }}
 
     desktop:
         needs: [plan, checks]
@@ -76,6 +71,7 @@ jobs:
         uses: ./.github/workflows/desktop-windows.yml
         with:
             ref: ${{ needs.plan.outputs.sha }}
+            release-plan: ${{ needs.plan.outputs.manifest }}
             release-tag: ${{ needs.plan.outputs.desktop_tag }}
 
     docker:
@@ -87,5 +83,6 @@ jobs:
         uses: ./.github/workflows/docker-publish.yml
         with:
             ref: ${{ needs.plan.outputs.sha }}
+            release-plan: ${{ needs.plan.outputs.manifest }}
             tag: ${{ needs.plan.outputs.docker_tag }}
             version: ${{ needs.plan.outputs.docker_version }}
