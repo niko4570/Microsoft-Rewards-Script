@@ -24,6 +24,7 @@ import Activities from './functions/Activities'
 import { TaskRunner } from './functions/TaskRunner'
 import { readWithRetry } from './functions/TaskPolicy'
 import { SearchManager } from './functions/activities/search/SearchManager'
+import { runTaskSearches } from './functions/TaskSearch'
 
 import type { Account } from './interface/Account'
 import HttpClient from './util/Http'
@@ -743,16 +744,32 @@ export class MicrosoftRewardsBot {
                 const initialPoints = this.userData.initialPoints ?? 0
 
                 if (taskRunner) {
-                    await taskRunner.run(data, appData, async () => {
-                        try {
-                            await executionContext.run({ isMobile: false, account }, async () => {
-                                desktopSession = await this.createDesktopSession(account)
-                                await this.activities.doPunchCardsDesktop()
+                    await taskRunner.run(
+                        data,
+                        appData,
+                        async () => {
+                            try {
+                                await executionContext.run({ isMobile: false, account }, async () => {
+                                    desktopSession = await this.createDesktopSession(account)
+                                    await this.activities.doPunchCardsDesktop()
+                                })
+                            } finally {
+                                await closeDesktopSession()
+                            }
+                        },
+                        () =>
+                            runTaskSearches(this, this.searchManager, async isMobile => {
+                                if (isMobile) return this.searchManager.searchMobile(account)
+                                return executionContext.run({ isMobile: false, account }, async () => {
+                                    try {
+                                        desktopSession = await this.createDesktopSession(account)
+                                        return await this.searchManager.searchDesktop(account)
+                                    } finally {
+                                        await closeDesktopSession()
+                                    }
+                                })
                             })
-                        } finally {
-                            await closeDesktopSession()
-                        }
-                    })
+                    )
                     return {
                         initialPoints,
                         collectedPoints: (taskRunner.report.finalPoints ?? initialPoints) - initialPoints

@@ -91,7 +91,12 @@ export class TaskRunner {
         return data
     }
 
-    async run(initial: DashboardData, app: AppDashboardData | null, desktopCards?: () => Promise<void>): Promise<void> {
+    async run(
+        initial: DashboardData,
+        app: AppDashboardData | null,
+        desktopCards?: () => Promise<void>,
+        ordinarySearch?: () => Promise<TaskResult[]>
+    ): Promise<void> {
         this.report.initialPoints =
             initial.availablePointsKnown === false ? undefined : initial.dashboard.userStatus.availablePoints
         await this.refresh()
@@ -143,6 +148,11 @@ export class TaskRunner {
                     reason: after > before ? '余额增加，具体奖励来源以微软记录为准' : '没有确认新增积分',
                     pointsGained: after - before
                 })
+            })
+        }
+        if (ordinarySearch && (this.bot.config.workers.doMobileSearch || this.bot.config.workers.doDesktopSearch)) {
+            await this.phase('ordinary-search', '普通搜索积分', async () => {
+                for (const result of await ordinarySearch()) this.add(result)
             })
         }
         if (this.report.tasks.some(task => task.id === 'app-checkin' && task.status === 'unconfirmed')) {

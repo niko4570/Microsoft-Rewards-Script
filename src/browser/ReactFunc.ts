@@ -1,4 +1,5 @@
 import type { MicrosoftRewardsBot } from '../index'
+import type { Counters, DashboardImpression } from '../interface/DashboardData'
 
 export interface ParsedOffer {
     offerId: string
@@ -68,6 +69,7 @@ export interface AccountState {
 }
 
 export interface PageSnapshot {
+    searchCounters?: Pick<Counters, 'pcSearch' | 'mobileSearch'> | null
     nextStreakResetAt?: string | null
     offers: ParsedOffer[]
     reportable: ParsedOffer[]
@@ -102,6 +104,7 @@ export default class ReactFunc {
 
         return {
             nextStreakResetAt: this.parseStreakReset(combined),
+            searchCounters: this.parseSearchCounters(combined),
             offers,
             reportable: offers.filter(o => o.reportable),
             streaks,
@@ -113,6 +116,40 @@ export default class ReactFunc {
                 .filter((name): name is string => typeof name === 'string')
         }
     }
+    private parseSearchCounters(combined: string): PageSnapshot['searchCounters'] {
+        // Current Rewards /earn exposes pointsCounters.pc/mobile, independently of streak activity counts.
+        for (const carrier of this.extractObjects(combined, '"pointsCounters"')) {
+            const counters = carrier.pointsCounters
+            if (!counters || typeof counters !== 'object') continue
+            const out: Pick<Counters, 'pcSearch' | 'mobileSearch'> = { pcSearch: [], mobileSearch: [] }
+            for (const [key, target] of [
+                ['pc', 'pcSearch'],
+                ['mobile', 'mobileSearch']
+            ] as const) {
+                const quota = (counters as Record<string, unknown>)[key]
+                if (!quota || typeof quota !== 'object') continue
+                const { max, progress } = quota as Record<string, unknown>
+                if (
+                    typeof max !== 'number' ||
+                    typeof progress !== 'number' ||
+                    !Number.isSafeInteger(max) ||
+                    !Number.isSafeInteger(progress) ||
+                    max < 0 ||
+                    progress < 0 ||
+                    progress > max
+                )
+                    continue
+                out[target].push({
+                    offerId: key,
+                    pointProgress: progress,
+                    pointProgressMax: max
+                } as DashboardImpression)
+            }
+            if (out.pcSearch.length || out.mobileSearch.length) return out
+        }
+        return null
+    }
+
     public getStreakProtection(html: string): StreakProtectionState | null {
         return this.parseStreakProtection(this.concatFlightChunks(html))
     }

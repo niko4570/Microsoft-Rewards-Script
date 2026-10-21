@@ -187,6 +187,28 @@ function App() {
                                 </button>
                             </div>
                         </section>
+                        <section className="panel">
+                            <h3>
+                                运行模式：{snapshot.settings.mode === 'tasks-search' ? '任务＋搜索模式' : '任务模式'}
+                            </h3>
+                            <p className="muted">
+                                {snapshot.settings.mode === 'tasks-search'
+                                    ? '完成签到、每日活动和阅读等任务，再执行电脑和手机普通搜索，获取每日搜索额度积分。'
+                                    : '完成签到、每日活动和阅读等任务，只执行任务要求的搜索。'}
+                            </p>
+                            <button
+                                disabled={busy || !idle}
+                                onClick={() => {
+                                    const mode = snapshot.settings.mode === 'tasks-search' ? 'tasks' : 'tasks-search'
+                                    void act(
+                                        () => window.desktop.saveSettings({ ...snapshot.settings, mode }),
+                                        '运行模式已保存，下次运行生效'
+                                    )
+                                }}
+                            >
+                                切换为{snapshot.settings.mode === 'tasks-search' ? '任务模式' : '任务＋搜索模式'}
+                            </button>
+                        </section>
                         <div className="cards">
                             <section className="card">
                                 <p className="label">登录会话</p>

@@ -12,9 +12,10 @@ import { fileURLToPath } from 'node:url'
 if (process.platform !== 'win32') throw new Error('Tauri WebView2 UI smoke requires Windows')
 const directory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(path.resolve(directory, '../package.json'))
-const { chromium } = require('patchright')
-// Patchright evaluates in an isolated world by default; inspect the app's actual realm.
-const mainWorld = (page, operation) => page.evaluate(operation, undefined, false)
+// Use standard CDP automation for WebView2; Patchright's eager request interception
+// can reject outside connectOverCDP when a startup target closes.
+const { chromium } = require('playwright-core')
+const mainWorld = (page, operation) => page.evaluate(operation)
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'rewards-tauri-smoke-'))
 // Seed an existing account slot to check upgrade persistence without opening login.
 fs.writeFileSync(
@@ -113,6 +114,12 @@ try {
     await page.getByRole('status').filter({ hasText: '设置已保存' }).waitFor()
     assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'desktop.json'), 'utf8')).email, 'smoke@example.com')
     await page.getByRole('button', { name: '任务总览', exact: true }).click()
+    await page.getByRole('button', { name: '切换为任务＋搜索模式', exact: true }).click()
+    await page.getByRole('heading', { name: '运行模式：任务＋搜索模式', exact: true }).waitFor()
+    assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'desktop.json'), 'utf8')).mode, 'tasks-search')
+    await page.getByRole('button', { name: '切换为任务模式', exact: true }).click()
+    await page.getByRole('heading', { name: '运行模式：任务模式', exact: true }).waitFor()
+    assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'desktop.json'), 'utf8')).mode, 'tasks')
     assert.equal(await page.getByRole('button', { name: '开始任务', exact: true }).isDisabled(), true)
     await page.getByRole('button', { name: '运行结果', exact: true }).click()
     await page.getByRole('heading', { name: '还没有运行报告' }).waitFor()

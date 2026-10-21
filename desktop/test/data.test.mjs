@@ -43,6 +43,10 @@ test('rejects account injection and invalid automatic settings; migrates fixed s
     )
     assert.throws(() => validateSettings({ ...defaults, schedule: { enabled: 'true' } }))
     assert.throws(() => validateSettings({ ...defaults, startOnLogin: 'true' }))
+    assert.throws(() => validateSettings({ ...defaults, mode: 'unknown' }), /运行模式/)
+    const legacy = { ...defaults }
+    delete legacy.mode
+    assert.equal(validateSettings(legacy).mode, 'tasks')
 })
 
 test('backend inherits OS essentials but never developer credentials or injection', () => {
@@ -65,6 +69,19 @@ test('backend inherits OS essentials but never developer credentials or injectio
     assert.equal(env.API_TOKEN, 'fresh')
     for (const name of ['NODE_OPTIONS', 'ACCOUNT_2_EMAIL', 'HTTPS_PROXY']) assert.equal(env[name], undefined)
     assert.equal(env.CONFIG_TASKS_ONLY, 'true')
+    assert.equal(env.CONFIG_WORKER_DESKTOP_SEARCH, 'false')
+    assert.equal(env.CONFIG_WORKER_MOBILE_SEARCH, 'false')
+    const searches = backendEnvironment({
+        dataDirectory: '/data',
+        resourceDirectory: '/resources',
+        settings: { ...defaults, mode: 'tasks-search' },
+        token: 'fresh',
+        source: {}
+    })
+    assert.equal(searches.CONFIG_TASKS_ONLY, 'true')
+    assert.equal(searches.CONFIG_WORKER_DESKTOP_SEARCH, 'true')
+    assert.equal(searches.CONFIG_WORKER_MOBILE_SEARCH, 'true')
+    assert.equal(searches.CONFIG_WORKER_BONUS_SEARCHES, 'false')
 })
 
 test('persistent logs and diagnostic export redact credentials, email and URLs', t => {

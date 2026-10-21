@@ -3,6 +3,7 @@ import path from 'node:path'
 
 export const defaults = {
     email: '',
+    mode: 'tasks',
     schedule: { enabled: false },
     startOnLogin: false
 }
@@ -24,11 +25,14 @@ export function validateSettings(value) {
     ) {
         throw new Error('请输入有效的账号邮箱')
     }
+    const mode = value.mode ?? 'tasks'
+    if (!['tasks', 'tasks-search'].includes(mode)) throw new Error('运行模式无效')
     const schedule = value.schedule
     if (!schedule || typeof schedule.enabled !== 'boolean') throw new Error('自动运行设置无效')
     if (typeof value.startOnLogin !== 'boolean') throw new Error('开机启动设置无效')
     return {
         email: email.trim(),
+        mode,
         schedule: { enabled: schedule.enabled },
         startOnLogin: value.startOnLogin
     }
