@@ -28,8 +28,6 @@ import { runTaskSearches } from './functions/TaskSearch'
 
 import type { Account } from './interface/Account'
 import HttpClient from './util/Http'
-import { sendDiscord, flushDiscordQueue } from './logging/Discord'
-import { sendNtfy, flushNtfyQueue } from './logging/Ntfy'
 import { sendTelegram, flushTelegramQueue } from './logging/Telegram'
 import type { DashboardData } from './interface/DashboardData'
 import type { AppDashboardData } from './interface/AppDashBoardData'
@@ -72,7 +70,7 @@ export function getCurrentContext(): ExecutionContext {
 }
 
 async function flushAllWebhooks(timeoutMs = 5000): Promise<void> {
-    await Promise.allSettled([flushDiscordQueue(timeoutMs), flushNtfyQueue(timeoutMs), flushTelegramQueue(timeoutMs)])
+    await Promise.allSettled([flushTelegramQueue(timeoutMs)])
     closeSessionStore()
 }
 
@@ -314,12 +312,6 @@ export class MicrosoftRewardsBot {
                     const { webhook } = this.config
                     const { content, level } = log
 
-                    if (webhook.discord?.enabled && webhook.discord.url) {
-                        sendDiscord(webhook.discord.url, content, level)
-                    }
-                    if (webhook.ntfy?.enabled && webhook.ntfy.url) {
-                        sendNtfy(webhook.ntfy, content, level)
-                    }
                     if (webhook.telegram?.enabled && webhook.telegram.botToken && webhook.telegram.chatId) {
                         sendTelegram(webhook.telegram, content, level)
                     }
