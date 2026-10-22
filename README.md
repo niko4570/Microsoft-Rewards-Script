@@ -68,7 +68,6 @@ Windows 桌面版请先阅读上方的 [下载指引](#windows-下载) 和 [首�
     - [Build and run the script (bare metal version)](#build-and-run-the-script-bare-metal-version)
 - [Docker](#docker)
 - [Control API and Dashboard](#control-api-and-dashboard)
-- [Nix Setup](#nix-setup)
 - [Configuration Options](#configuration-options)
     - [Core](#core)
     - [Workers](#workers)
@@ -215,12 +214,6 @@ For a ready-made web interface, use the supported and endorsed
 [Rewards Dashboard](https://github.com/mgrimace/rewards-dashboard). It connects
 to this Control API to manage runs, accounts, schedules, logs, points, and
 related script settings.
-
----
-
-## Nix Setup
-
-If using Nix: `bash scripts/nix/run.sh`
 
 ---
 
@@ -410,18 +403,9 @@ Account browser proxies support `http://`, `https://`, `socks4://`, and `socks5:
 
 | Setting                                  | Type     | Default                                              | Description                       | Docker environment variable             |
 | ---------------------------------------- | -------- | ---------------------------------------------------- | --------------------------------- | --------------------------------------- |
-| `webhook.discord.enabled`                | boolean  | `false`                                              | Enable Discord webhook            | `CONFIG_DISCORD_ENABLED`                |
-| `webhook.discord.url`                    | string   | `""`                                                 | Discord webhook URL               | `CONFIG_DISCORD_URL`                    |
 | `webhook.telegram.enabled`               | boolean  | `false`                                              | Enable Telegram webhook           | `CONFIG_TELEGRAM_ENABLED`               |
 | `webhook.telegram.botToken`              | string   | `""`                                                 | Telegram bot token                | `CONFIG_TELEGRAM_BOTTOKEN`              |
 | `webhook.telegram.chatId`                | string   | `""`                                                 | Telegram chat id                  | `CONFIG_TELEGRAM_CHATID`                |
-| `webhook.ntfy.enabled`                   | boolean  | `false`                                              | Enable ntfy notifications         | `CONFIG_NTFY_ENABLED`                   |
-| `webhook.ntfy.url`                       | string   | `""`                                                 | ntfy server URL                   | `CONFIG_NTFY_URL`                       |
-| `webhook.ntfy.topic`                     | string   | `""`                                                 | ntfy topic                        | `CONFIG_NTFY_TOPIC`                     |
-| `webhook.ntfy.token`                     | string   | `""`                                                 | ntfy authentication token         | `CONFIG_NTFY_TOKEN`                     |
-| `webhook.ntfy.title`                     | string   | `"Microsoft-Rewards-Script"`                         | Notification title                | `CONFIG_NTFY_TITLE`                     |
-| `webhook.ntfy.tags`                      | string[] | `["bot", "notify"]`                                  | Notification tags                 | `CONFIG_NTFY_TAGS` \*                   |
-| `webhook.ntfy.priority`                  | number   | `3`                                                  | Notification priority (1-5)       | `CONFIG_NTFY_PRIORITY`                  |
 | `webhook.webhookLogFilter.enabled`       | boolean  | `false`                                              | Enable webhook log filtering      | `CONFIG_WEBHOOK_LOG_FILTER_ENABLED`     |
 | `webhook.webhookLogFilter.mode`          | string   | `"whitelist"`                                        | Filter mode (whitelist/blacklist) | `CONFIG_WEBHOOK_LOG_FILTER_MODE`        |
 | `webhook.webhookLogFilter.levels`        | string[] | `["error"]`                                          | Log levels to send                | `CONFIG_WEBHOOK_LOG_FILTER_LEVELS` \*   |
@@ -430,11 +414,6 @@ Account browser proxies support `http://`, `https://`, `socks4://`, and `socks5:
 
 > [!NOTE]
 > \* Docker `CONFIG_*` array values are comma-separated strings e.g. `"error,warn"`. Regex patterns must be set directly in `config.json`.
-
-> [!WARNING]
-> **NTFY** users set the `webhookLogFilter` to `enabled`, or you will receive push notifications for _all_ logs.
-> When enabled, only account start, 2FA codes, and account completion summaries are delivered as push notifications.
-> Customize which notifications you receive with the `keywords` options.
 
 ---
 

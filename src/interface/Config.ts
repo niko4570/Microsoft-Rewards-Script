@@ -78,8 +78,6 @@ export interface ConfigActivities {
 }
 
 export interface ConfigWebhook {
-    discord?: WebhookDiscordConfig
-    ntfy?: WebhookNtfyConfig
     telegram?: WebhookTelegramConfig
     webhookLogFilter: LogFilter
 }
@@ -90,21 +88,6 @@ export interface LogFilter {
     levels?: Array<'debug' | 'info' | 'warn' | 'error'>
     keywords?: string[]
     regexPatterns?: string[]
-}
-
-export interface WebhookDiscordConfig {
-    enabled: boolean
-    url: string
-}
-
-export interface WebhookNtfyConfig {
-    enabled?: boolean
-    url: string
-    topic?: string
-    token?: string
-    title?: string
-    tags?: string[]
-    priority?: 1 | 2 | 3 | 4 | 5 // 5 highest (important)
 }
 
 export interface WebhookTelegramConfig {

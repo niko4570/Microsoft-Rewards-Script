@@ -81,23 +81,10 @@
         "ignoreCertificateErrors": false
     },
     "webhook": {
-        "discord": {
-            "enabled": false,
-            "url": ""
-        },
         "telegram": {
             "enabled": false,
             "botToken": "",
             "chatId": ""
-        },
-        "ntfy": {
-            "enabled": false,
-            "url": "",
-            "topic": "",
-            "token": "",
-            "title": "Microsoft-Rewards-Script",
-            "tags": ["bot", "notify"],
-            "priority": 3
         },
         "webhookLogFilter": {
             "enabled": false,

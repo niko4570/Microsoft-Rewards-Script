@@ -73,23 +73,10 @@ export const ENV_OVERRIDES: EnvOverrideEntry[] = [
     { env: 'CONFIG_LOG_FILTER_LEVELS', path: 'consoleLogFilter.levels', type: 'array' },
     { env: 'CONFIG_LOG_FILTER_KEYWORDS', path: 'consoleLogFilter.keywords', type: 'array' },
 
-    // Discord webhook
-    { env: 'CONFIG_DISCORD_ENABLED', path: 'webhook.discord.enabled', type: 'bool' },
-    { env: 'CONFIG_DISCORD_URL', path: 'webhook.discord.url', type: 'string' },
-
     // Telegram webhook
     { env: 'CONFIG_TELEGRAM_ENABLED', path: 'webhook.telegram.enabled', type: 'bool' },
     { env: 'CONFIG_TELEGRAM_BOTTOKEN', path: 'webhook.telegram.botToken', type: 'string' },
     { env: 'CONFIG_TELEGRAM_CHATID', path: 'webhook.telegram.chatId', type: 'string' },
-
-    // ntfy webhook (tags are comma-separated e.g. "bot,notify")
-    { env: 'CONFIG_NTFY_ENABLED', path: 'webhook.ntfy.enabled', type: 'bool' },
-    { env: 'CONFIG_NTFY_URL', path: 'webhook.ntfy.url', type: 'string' },
-    { env: 'CONFIG_NTFY_TOPIC', path: 'webhook.ntfy.topic', type: 'string' },
-    { env: 'CONFIG_NTFY_TOKEN', path: 'webhook.ntfy.token', type: 'string' },
-    { env: 'CONFIG_NTFY_TITLE', path: 'webhook.ntfy.title', type: 'string' },
-    { env: 'CONFIG_NTFY_PRIORITY', path: 'webhook.ntfy.priority', type: 'number' },
-    { env: 'CONFIG_NTFY_TAGS', path: 'webhook.ntfy.tags', type: 'array' },
 
     // Webhook log filter
     { env: 'CONFIG_WEBHOOK_LOG_FILTER_ENABLED', path: 'webhook.webhookLogFilter.enabled', type: 'bool' },

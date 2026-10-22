@@ -1,7 +1,5 @@
 import chalk from 'chalk'
 import cluster from 'cluster'
-import { sendDiscord } from './Discord'
-import { sendNtfy } from './Ntfy'
 import { sendTelegram } from './Telegram'
 import type { MicrosoftRewardsBot } from '../index'
 import { errorDiagnostic } from '../util/ErrorDiagnostic'
@@ -112,27 +110,11 @@ export class Logger {
 
         if (!webhookAllowed || level === 'debug') return
 
-        const hasWebhook = Boolean(
-            (config.webhook.discord?.enabled && config.webhook.discord.url) ||
-            (config.webhook.ntfy?.enabled && config.webhook.ntfy.url) ||
-            (config.webhook.telegram?.enabled && config.webhook.telegram.botToken && config.webhook.telegram.chatId)
-        )
-        if (!hasWebhook) return
+        const telegram = config.webhook.telegram
+        if (!telegram?.enabled || !telegram.botToken || !telegram.chatId) return
 
         if (cluster.isPrimary) {
-            if (config.webhook.discord?.enabled && config.webhook.discord.url) {
-                sendDiscord(config.webhook.discord.url, cleanMsg, level)
-            }
-            if (config.webhook.ntfy?.enabled && config.webhook.ntfy.url) {
-                sendNtfy(config.webhook.ntfy, cleanMsg, level)
-            }
-            if (
-                config.webhook.telegram?.enabled &&
-                config.webhook.telegram.botToken &&
-                config.webhook.telegram.chatId
-            ) {
-                sendTelegram(config.webhook.telegram, cleanMsg, level)
-            }
+            sendTelegram(telegram, cleanMsg, level)
         } else {
             process.send?.({ __ipcLog: { content: cleanMsg, level } })
         }

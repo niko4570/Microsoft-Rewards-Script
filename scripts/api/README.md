@@ -1622,8 +1622,9 @@ console.log(data.config)
             "doDesktopSearch": true
         },
         "webhook": {
-            "discord": {
-                "url": "***REDACTED***"
+            "telegram": {
+                "botToken": "***REDACTED***",
+                "chatId": "***REDACTED***"
             }
         }
     }
