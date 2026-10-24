@@ -286,27 +286,6 @@ td:nth-child(2) {
     background: #fff0e7;
     color: #a15a25;
 }
-.toolbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 14px;
-    margin-bottom: 16px;
-}
-.log-view {
-    padding: 20px;
-    border-radius: 10px;
-    background: #172234;
-    color: #c6d5e8;
-    font:
-        12px/1.9 Consolas,
-        monospace;
-    height: calc(100vh - 230px);
-    min-height: 320px;
-    overflow: auto;
-    overflow-wrap: anywhere;
-    white-space: pre-wrap;
-}
 .settings label {
     display: block;
     font-size: 14px;

@@ -46,7 +46,10 @@ export class Backend extends EventEmitter {
         })
         this.child = child
         child.on('message', message => {
-            if (message?.type === 'desktop:status') this.taskPid = message.pid || null
+            if (message?.type === 'desktop:status') {
+                this.taskPid = message.pid || null
+                this.emit('status', message)
+            }
         })
         await new Promise((resolve, reject) => {
             let ready = false

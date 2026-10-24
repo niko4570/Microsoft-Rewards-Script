@@ -82,7 +82,6 @@ export function redact(value) {
 export class DailyLog {
     constructor(directory) {
         this.directory = directory
-        this.lines = []
         this.cleanup()
     }
     cleanup(now = Date.now()) {
@@ -96,8 +95,6 @@ export class DailyLog {
     write(message) {
         const now = new Date().toISOString()
         const line = `${now} ${redact(message)}`
-        this.lines.push(line)
-        if (this.lines.length > 500) this.lines.shift()
         fs.appendFileSync(path.join(this.directory, `${now.slice(0, 10)}.log`), line + '\n', { mode: 0o600 })
         return line
     }

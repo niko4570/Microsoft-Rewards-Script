@@ -1,7 +1,7 @@
 import './bridge'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import type { Settings, Snapshot } from './types'
+import type { Settings, Snapshot, TaskReport } from './types'
 import './styles.css'
 
 const stateNames: Record<string, string> = {
@@ -11,6 +11,7 @@ const stateNames: Record<string, string> = {
     stopping: '正在停止',
     login: '等待浏览器登录',
     scanning: '正在检查重置时间',
+    balance: '正在查询积分余额',
     offline: '后台未连接',
     saving: '保存设置中',
     restarting: '重启后台中',
@@ -26,6 +27,25 @@ const taskNames: Record<string, string> = {
 }
 const formatTime = (value?: string | null) => (value ? new Date(value).toLocaleString('zh-CN') : '暂无')
 
+function ReportSummary({ tasks }: Pick<TaskReport, 'tasks'>) {
+    const completed = tasks.filter(task => task.status === 'completed').length
+    const skipped = tasks.filter(task => task.status === 'skipped').length
+    const needsReview = tasks.filter(task => !['completed', 'skipped'].includes(task.status))
+    const titles = [...new Set(needsReview.map(task => task.title))]
+    return (
+        <div>
+            <p>
+                完成 {completed} 项，正常跳过 {skipped} 项
+            </p>
+            <p className={needsReview.length ? 'notice' : 'muted'}>
+                {needsReview.length
+                    ? `需要检查 ${needsReview.length} 项：${titles.slice(0, 3).join('、')}${titles.length > 3 ? '等' : ''}（原因见明细）`
+                    : '需要检查：无'}
+            </p>
+        </div>
+    )
+}
+
 function App() {
     const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
     const [settings, setSettings] = useState<Settings | null>(null)
@@ -34,7 +54,6 @@ function App() {
     const [message, setMessage] = useState('')
     const [failed, setFailed] = useState(false)
     const [updateBusy, setUpdateBusy] = useState(false)
-    const logEnd = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
         const update = (value: Snapshot) => {
@@ -51,9 +70,6 @@ function App() {
             })
         return unsubscribe
     }, [])
-    useEffect(() => {
-        if (tab === 'logs') logEnd.current?.scrollIntoView({ block: 'end' })
-    }, [snapshot?.logs.length, tab])
 
     async function act(action: () => Promise<unknown>, success = '') {
         setBusy(true)
@@ -102,9 +118,7 @@ function App() {
     const loggedIn = ['mobile', 'desktop'].every(platform =>
         snapshot.sessions.some(session => session.platform === platform && session.hasStorageState)
     )
-    const report = snapshot.reports[0]
-    const gained =
-        report?.initialPoints != null && report?.finalPoints != null ? report.finalPoints - report.initialPoints : null
+    const balance = snapshot.balance
 
     return (
         <div className="app">
@@ -119,7 +133,6 @@ function App() {
                     {[
                         ['overview', '任务总览'],
                         ['results', '运行结果'],
-                        ['logs', '实时日志'],
                         ['settings', '应用设置']
                     ].map(([id, label]) => (
                         <button key={id} className={tab === id ? 'nav active' : 'nav'} onClick={() => setTab(id)}>
@@ -137,15 +150,18 @@ function App() {
                 <header>
                     <div>
                         <p className="eyebrow">MICROSOFT REWARDS</p>
-                        <h1>
-                            {{ overview: '任务总览', results: '运行结果', logs: '实时日志', settings: '应用设置' }[tab]}
-                        </h1>
+                        <h1>{{ overview: '任务总览', results: '运行结果', settings: '应用设置' }[tab]}</h1>
                     </div>
                     <span className="state-pill">{stateNames[snapshot.state] || snapshot.state}</span>
                 </header>
                 {(message || snapshot.error) && (
                     <div role="status" className={failed || snapshot.error ? 'notice error' : 'notice'}>
                         {message || snapshot.error}
+                    </div>
+                )}
+                {snapshot.interruption && (
+                    <div role="status" className="notice">
+                        {snapshot.interruption}
                     </div>
                 )}
 
@@ -251,12 +267,31 @@ function App() {
                                 <button onClick={() => setTab('settings')}>自动运行设置</button>
                             </section>
                             <section className="card">
-                                <p className="label">最近积分变化</p>
-                                <h3>{gained == null ? '未确认' : gained >= 0 ? `+${gained}` : gained}</h3>
+                                <p className="label">积分余额</p>
+                                <h3>{balance.value == null ? '暂无数据' : balance.value.toLocaleString('zh-CN')}</h3>
                                 <p>
-                                    {report ? formatTime(report.finishedAt || report.startedAt) : '完成一次运行后显示'}
+                                    {balance.updatedAt
+                                        ? `更新于 ${formatTime(balance.updatedAt)}`
+                                        : '登录后点击刷新余额'}
                                 </p>
-                                <button onClick={() => setTab('results')}>查看详细结果</button>
+                                <p className="muted">
+                                    {balance.error
+                                        ? `刷新失败：${balance.error}${balance.value == null ? '' : '；保留上次余额'}`
+                                        : '显示最近一次读取的可用积分余额'}
+                                </p>
+                                <button
+                                    disabled={
+                                        busy ||
+                                        !idle ||
+                                        !configured ||
+                                        !snapshot.sessions.some(
+                                            session => session.platform === 'desktop' && session.hasStorageState
+                                        )
+                                    }
+                                    onClick={() => void act(() => window.desktop.refreshBalance(), '积分余额已更新')}
+                                >
+                                    {snapshot.state === 'balance' ? '正在刷新…' : '刷新余额'}
+                                </button>
                             </section>
                         </div>
                         <section className="panel">
@@ -298,6 +333,7 @@ function App() {
                                     <h3>{formatTime(item.startedAt)}</h3>
                                     <span>{item.finishedAt ? '已生成报告' : '状态未确认'}</span>
                                 </div>
+                                <ReportSummary tasks={item.tasks} />
                                 {item.error && <p className="notice error">{item.error}</p>}
                                 <p className="muted">
                                     积分：{item.initialPoints ?? '未读取'} → {item.finalPoints ?? '未读取'}
@@ -328,28 +364,6 @@ function App() {
                                 </div>
                             </section>
                         ))}
-                    </>
-                )}
-
-                {tab === 'logs' && (
-                    <>
-                        <div className="toolbar">
-                            <p className="muted">显示最近 300 条脱敏日志，本地按日保留 30 天。</p>
-                            <button
-                                disabled={busy}
-                                onClick={() => void act(() => window.desktop.exportDiagnostics(), '诊断导出操作已完成')}
-                            >
-                                导出诊断
-                            </button>
-                        </div>
-                        <section className="log-view" aria-label="运行日志">
-                            {snapshot.logs.length ? (
-                                snapshot.logs.map((line, index) => <div key={index}>{line}</div>)
-                            ) : (
-                                <p>等待运行日志…</p>
-                            )}
-                            <div ref={logEnd} />
-                        </section>
                     </>
                 )}
 
@@ -399,6 +413,10 @@ function App() {
                         <section className="panel">
                             <h3>维护与版本</h3>
                             <p>Rewards Desktop v{snapshot.version} · Windows 11 x64 私人测试版</p>
+                            <p className="muted">
+                                排查问题时，请先查看「运行结果」，再导出诊断。日志在本机保留 30 天，诊断包含最近 7
+                                天的脱敏日志；也可打开数据目录查看 logs 文件夹。
+                            </p>
                             <p className="muted">
                                 检查 GitHub
                                 上的桌面新版本，直接下载安装包。下载完成后退出应用并运行安装包；本地账号、会话和设置会保留。测试包暂未签名。
