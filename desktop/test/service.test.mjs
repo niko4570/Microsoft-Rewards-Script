@@ -346,3 +346,95 @@ test('normal completion and backend failure update the persisted run state witho
     backend.emit('failure', '后台已退出')
     assert.match((await service.snapshot()).interruption, /运行中断/)
 })
+
+test('balance refresh needs only desktop login, persists zero, and does not start tasks', async t => {
+    const { service, backend, dataDirectory } = fixture(t, {
+        email: 'person@example.com',
+        startOnLogin: false,
+        schedule: { enabled: false }
+    })
+    await assert.rejects(service.refreshBalance(), /桌面会话登录/)
+    backend.sessions = [{ email: service.settings.email, platform: 'desktop', hasStorageState: true }]
+    service.resetScanner = async balanceOnly => {
+        assert.equal(balanceOnly, true)
+        assert.equal(service.operation, 'balance')
+        return { balance: 0, updatedAt: '2026-10-24T01:00:00Z' }
+    }
+    await service.refreshBalance()
+    assert.deepEqual((await service.snapshot()).balance, { value: 0, updatedAt: '2026-10-24T01:00:00Z', error: null })
+    assert.equal(JSON.parse(fs.readFileSync(path.join(dataDirectory, 'balance.json'))).value, 0)
+    assert.equal(backend.starts, 0)
+    const reopened = new DesktopService({
+        executable: process.execPath,
+        resourceDirectory: root,
+        dataDirectory,
+        version: 'test',
+        backendFactory: () => new FakeBackend()
+    })
+    assert.equal((await reopened.snapshot()).balance.value, 0)
+    await reopened.close()
+    service.resetScanner = async () => {
+        throw new Error('会话过期')
+    }
+    await assert.rejects(service.refreshBalance(), /会话过期/)
+    assert.equal((await service.snapshot()).balance.value, 0)
+    assert.match((await service.snapshot()).balance.error, /会话过期/)
+    service.resetScanner = async () => ({ balance: null })
+    await assert.rejects(service.refreshBalance(), /未读取到积分余额/)
+    assert.equal((await service.snapshot()).balance.value, 0)
+    backend.state = 'running'
+    await assert.rejects(service.refreshBalance(), /正在运行/)
+    backend.state = 'idle'
+    await service.clearData()
+    assert.equal((await service.snapshot()).balance.value, null)
+    assert.equal(fs.existsSync(path.join(dataDirectory, 'balance.json')), false)
+})
+
+test('balance selects newest account observation including a lower post-redemption balance', async t => {
+    const { service, dataDirectory } = fixture(t, {
+        email: 'person@example.com',
+        startOnLogin: false,
+        schedule: { enabled: false }
+    })
+    service.rememberBalance({ balance: 9000, updatedAt: '2026-10-24T01:00:00Z' })
+    const reportFile = path.join(dataDirectory, 'reports/tasks-abcdef123456-1.json')
+    fs.writeFileSync(
+        reportFile,
+        JSON.stringify({
+            account: 'person@example.com',
+            initialPoints: 9000,
+            finalPoints: 100,
+            startedAt: '2026-10-24T02:00:00Z',
+            finishedAt: '2026-10-24T02:01:00Z',
+            tasks: []
+        })
+    )
+    assert.equal((await service.snapshot()).balance.value, 100)
+    service.rememberBalance({ balance: 50, updatedAt: '2026-10-24T03:00:00Z' })
+    assert.equal((await service.snapshot()).balance.value, 50)
+    await service.saveSettings({ ...service.settings, email: 'other@example.com' })
+    assert.equal((await service.snapshot()).balance.value, null)
+    assert.equal(fs.existsSync(path.join(dataDirectory, 'balance.json')), false)
+})
+
+test('balance refresh uses a read-only child flag and releases the operation gate', async t => {
+    const { service, backend, dataDirectory } = fixture(t)
+    service.settings.email = 'person@example.com'
+    backend.sessions = [{ email: service.settings.email, platform: 'desktop', hasStorageState: true }]
+    const runtime = path.join(dataDirectory, 'balance-runtime')
+    fs.mkdirSync(path.join(runtime, 'scripts/main'), { recursive: true })
+    fs.writeFileSync(
+        path.join(runtime, 'scripts/main/scanReset.js'),
+        `
+        if (!process.argv.includes('--balance')) process.exit(1)
+        process.send({ type: 'desktop:reset', balance: 12480, updatedAt: '2026-10-24T04:00:00Z' })
+        process.disconnect()
+    `
+    )
+    service.resourceDirectory = runtime
+    await service.refreshBalance()
+    assert.equal((await service.snapshot()).balance.value, 12480)
+    assert.equal(service.operation, null)
+    assert.equal(service.scanChild, null)
+    assert.equal(backend.starts, 0)
+})

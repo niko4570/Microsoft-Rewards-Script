@@ -18,6 +18,7 @@ export class DesktopHost {
             start: () => service.startRun(),
             stop: () => service.stopRun(),
             login: () => service.login(),
+            refreshBalance: () => service.refreshBalance(),
             cancelLogin: () => service.cancelLogin(),
             saveSettings: value => service.saveSettings(value),
             restartBackend: () => service.restartBackend(),

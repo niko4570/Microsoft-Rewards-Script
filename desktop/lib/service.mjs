@@ -22,6 +22,13 @@ export class DesktopService extends EventEmitter {
         Object.assign(this, { executable, resourceDirectory, dataDirectory, version, setAutoStart })
         this.settings = initializeData(dataDirectory, path.join(resourceDirectory, 'config.tasks.example.json'))
         this.logger = new DailyLog(path.join(dataDirectory, 'logs'))
+        this.balance = null
+        this.balanceError = null
+        try {
+            const saved = JSON.parse(fs.readFileSync(path.join(dataDirectory, 'balance.json'), 'utf8'))
+            if (Number.isSafeInteger(saved.value) && saved.value >= 0 && Number.isFinite(Date.parse(saved.updatedAt)))
+                this.balance = saved
+        } catch {}
         this.resetScanner = resetScanner
         this.error = null
         this.operation = null
@@ -133,12 +140,35 @@ export class DesktopService extends EventEmitter {
             throw error
         }
     }
-    async scanReset() {
-        return this.exclusive('scanning', async () => {
+    async refreshBalance() {
+        try {
+            const result = await this.scanReset(true)
+            if (!Number.isSafeInteger(result.balance) || result.balance < 0)
+                throw new Error('未读取到积分余额，请稍后重试')
+            this.balanceError = null
+        } catch (error) {
+            this.balanceError = redact(error.message)
+            throw error
+        } finally {
+            this.emit('change')
+        }
+    }
+    rememberBalance(result) {
+        if (!Number.isSafeInteger(result.balance) || result.balance < 0) return
+        this.balance = {
+            account: this.settings.email.toLowerCase(),
+            value: result.balance,
+            updatedAt: result.updatedAt || new Date().toISOString()
+        }
+        atomicJson(path.join(this.dataDirectory, 'balance.json'), this.balance)
+        this.balanceError = null
+    }
+    async scanReset(balanceOnly = false) {
+        return this.exclusive(balanceOnly ? 'balance' : 'scanning', async () => {
             await this.ensureIdle()
             const { sessions } = await this.backend.request('/sessions')
             if (
-                !['mobile', 'desktop'].every(platform =>
+                !(balanceOnly ? ['desktop'] : ['mobile', 'desktop']).every(platform =>
                     sessions.some(
                         session =>
                             session.email.toLowerCase() === this.settings.email.toLowerCase() &&
@@ -147,22 +177,33 @@ export class DesktopService extends EventEmitter {
                     )
                 )
             )
-                throw new Error('请先完成手机和桌面会话登录')
+                throw new Error(balanceOnly ? '请先完成桌面会话登录' : '请先完成手机和桌面会话登录')
             if (this.stopping) throw new Error('应用正在退出')
-            if (this.resetScanner) return this.resetScanner()
-            return new Promise((resolve, reject) => {
-                const child = spawn(this.executable, [path.join(this.resourceDirectory, 'scripts/main/scanReset.js')], {
-                    cwd: this.dataDirectory,
-                    env: backendEnvironment({ ...this, settings: this.settings, token: '' }),
-                    detached: process.platform !== 'win32',
-                    windowsHide: true,
-                    stdio: ['ignore', 'pipe', 'pipe', 'ipc']
-                })
+            if (this.resetScanner) {
+                const result = await this.resetScanner(balanceOnly)
+                this.rememberBalance(result)
+                return result
+            }
+            const result = await new Promise((resolve, reject) => {
+                const child = spawn(
+                    this.executable,
+                    [
+                        path.join(this.resourceDirectory, 'scripts/main/scanReset.js'),
+                        ...(balanceOnly ? ['--balance'] : [])
+                    ],
+                    {
+                        cwd: this.dataDirectory,
+                        env: backendEnvironment({ ...this, settings: this.settings, token: '' }),
+                        detached: process.platform !== 'win32',
+                        windowsHide: true,
+                        stdio: ['ignore', 'pipe', 'pipe', 'ipc']
+                    }
+                )
                 this.scanChild = child
                 let result
                 let failure
                 const timer = setTimeout(() => {
-                    failure = new Error('重置时间检查超时')
+                    failure = new Error(balanceOnly ? '积分余额查询超时' : '重置时间检查超时')
                     void killTree(child.pid)
                 }, 90000)
                 child.on('message', message => {
@@ -178,8 +219,12 @@ export class DesktopService extends EventEmitter {
                     else resolve(result)
                 }
                 child.once('error', finish)
-                child.once('exit', () => finish())
+                child.once('exit', code =>
+                    finish(code === 0 ? null : new Error(balanceOnly ? '积分余额查询未完成' : '重置时间检查未完成'))
+                )
             })
+            this.rememberBalance(result)
+            return result
         })
     }
     async stopRun() {
@@ -205,6 +250,11 @@ export class DesktopService extends EventEmitter {
                 throw error
             }
             this.settings = next
+            if (next.email !== previous.email) {
+                this.balance = null
+                this.balanceError = null
+                fs.rmSync(path.join(this.dataDirectory, 'balance.json'), { force: true })
+            }
             this.scheduler.reset()
             if (next.email !== previous.email || next.mode !== previous.mode) {
                 await this.backend.close()
@@ -258,7 +308,11 @@ export class DesktopService extends EventEmitter {
                     this.error = null
                     this.scheduler.reset()
                     this.log('登录会话已保存，可以开始任务')
-                    void this.scheduler.tick()
+                    setImmediate(() => {
+                        void this.refreshBalance()
+                            .catch(error => this.log(error.message))
+                            .finally(() => this.scheduler.tick())
+                    })
                 } else {
                     this.error = '登录未完成，请重新登录或导出诊断'
                     this.log(this.error)
@@ -315,7 +369,23 @@ export class DesktopService extends EventEmitter {
                 this.error = error.message
             }
         }
+        const reports = readReports(path.join(this.dataDirectory, 'reports')).filter(
+            report => !report.account || report.account.toLowerCase() === this.settings.email.toLowerCase()
+        )
+        let balance = this.balance?.account === this.settings.email.toLowerCase() ? this.balance : null
+        for (const report of reports) {
+            const value = report.finalPoints ?? report.initialPoints
+            const updatedAt = report.finalPoints != null ? report.finishedAt : report.startedAt
+            if (
+                Number.isSafeInteger(value) &&
+                value >= 0 &&
+                Number.isFinite(Date.parse(updatedAt)) &&
+                (!balance || Date.parse(updatedAt) > Date.parse(balance.updatedAt))
+            )
+                balance = { value, updatedAt }
+        }
         return {
+            balance: { value: balance?.value ?? null, updatedAt: balance?.updatedAt ?? null, error: this.balanceError },
             version: this.version,
             settings: this.settings,
             automation: {
@@ -331,10 +401,7 @@ export class DesktopService extends EventEmitter {
             interruption: this.runState.isInterrupted(this.settings.email) ? interruptionMessage : null,
             lastExit: status?.lastExit || null,
             sessions,
-            reports: readReports(path.join(this.dataDirectory, 'reports')).filter(
-                report => !report.account || report.account.toLowerCase() === this.settings.email.toLowerCase()
-            ),
-            logs: this.logger.lines.slice(-300)
+            reports
         }
     }
     diagnosticText() {
@@ -359,7 +426,8 @@ export class DesktopService extends EventEmitter {
                 'desktop.json',
                 'desktop.json.bak',
                 'schedule-state.json',
-                'run-state.json'
+                'run-state.json',
+                'balance.json'
             ]) {
                 fs.rmSync(path.join(this.dataDirectory, name), { force: true, recursive: true })
             }
@@ -370,6 +438,8 @@ export class DesktopService extends EventEmitter {
             this.logger = new DailyLog(path.join(this.dataDirectory, 'logs'))
             this.scheduler.state = { attempts: [] }
             this.runState.value = null
+            this.balance = null
+            this.balanceError = null
             this.scheduler.reset()
             await this.backend.start()
             this.error = null

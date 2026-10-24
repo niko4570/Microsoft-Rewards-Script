@@ -11,6 +11,7 @@ const actions = [
     'stop',
     'login',
     'cancelLogin',
+    'refreshBalance',
     'saveSettings',
     'restartBackend',
     'openDataDirectory',

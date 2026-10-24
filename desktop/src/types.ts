@@ -15,6 +15,7 @@ export interface TaskReport {
 }
 
 export interface Snapshot {
+    balance: { value: number | null; updatedAt: string | null; error: string | null }
     version: string
     update: {
         status: 'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'downloaded' | 'error'
@@ -32,7 +33,6 @@ export interface Snapshot {
     lastExit: { code: number | null; signal?: string | null; error?: string } | null
     sessions: Array<{ platform: string; hasStorageState: boolean; updatedAt: string | null }>
     reports: TaskReport[]
-    logs: string[]
 }
 
 export interface DesktopBridge {
@@ -43,6 +43,7 @@ export interface DesktopBridge {
     start(): Promise<unknown>
     stop(): Promise<unknown>
     login(): Promise<unknown>
+    refreshBalance(): Promise<void>
     cancelLogin(): Promise<unknown>
     saveSettings(value: Settings): Promise<Settings>
     restartBackend(): Promise<unknown>

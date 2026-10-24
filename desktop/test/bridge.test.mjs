@@ -34,3 +34,13 @@ test('diagnostic export and clearing data require a native destination or confir
     assert.equal(requests[0][0], 'saveFile')
     assert.equal(requests[1][0], 'confirmClear')
 })
+
+test('balance refresh is exposed through the private bridge without arguments', async () => {
+    const service = new EventEmitter()
+    let refreshes = 0
+    service.refreshBalance = () => ++refreshes
+    const host = new DesktopHost({ service, native: () => {}, version: 'test' })
+    assert.equal(await host.invoke('refreshBalance'), 1)
+    await assert.rejects(host.invoke('refreshBalance', { account: 'other' }), /此操作不接受参数/)
+    assert.equal(refreshes, 1)
+})

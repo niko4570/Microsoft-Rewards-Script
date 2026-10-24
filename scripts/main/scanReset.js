@@ -16,6 +16,7 @@ const require = createRequire(import.meta.url)
 const { URLs } = require(path.join(process.env.MRS_RESOURCE_DIR, 'dist/constants/urls.js'))
 const ReactFunc = require(path.join(process.env.MRS_RESOURCE_DIR, 'dist/browser/ReactFunc.js')).default
 const { hasPendingEarnTasks } = require(path.join(process.env.MRS_RESOURCE_DIR, 'dist/functions/TaskPolicy.js'))
+const balanceOnly = process.argv.includes('--balance')
 let browser
 process.on('disconnect', () => {
     void browser?.close().finally(() => process.exit(130))
@@ -38,7 +39,9 @@ try {
         : await browser.newContext(options)
     const page = await context.newPage()
     const html = []
-    for (const url of [URLs.rewards.earn, URLs.rewards.earnStreaks, URLs.rewards.dashboard]) {
+    for (const url of balanceOnly
+        ? [URLs.rewards.earn]
+        : [URLs.rewards.earn, URLs.rewards.earnStreaks, URLs.rewards.dashboard]) {
         html.push(await readResetPage(page, url))
     }
     const logger = { info() {}, debug() {}, warn() {}, error() {} }
@@ -50,23 +53,36 @@ try {
     if (snapshot.account.level === null && snapshot.account.availablePoints === null)
         throw new Error('未确认登录状态，请重新登录')
     if (snapshot.warnings?.length) throw new Error('Rewards 返回账户警告，请手动检查')
-    const today = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'Asia/Shanghai',
-        month: '2-digit',
-        day: '2-digit',
-        year: 'numeric'
-    }).format(new Date())
-    const searchesEnabled =
-        process.env.CONFIG_WORKER_DESKTOP_SEARCH === 'true' || process.env.CONFIG_WORKER_MOBILE_SEARCH === 'true'
-    const pendingSearch =
-        searchesEnabled &&
-        (!snapshot.searchCounters ||
-            Object.values(snapshot.searchCounters)
-                .flat()
-                .some(counter => counter.pointProgress < counter.pointProgressMax))
-    const pending = hasPendingEarnTasks(snapshot, today) || pendingSearch
-    if (!snapshot.streaks.length && !pending) throw new Error('未读取到每日任务状态')
-    process.send?.({ type: 'desktop:reset', nextStreakResetAt: snapshot.nextStreakResetAt, pending })
+    const balance = snapshot.account.availablePoints
+    const updatedAt = new Date().toISOString()
+    if (balanceOnly) {
+        if (!Number.isSafeInteger(balance) || balance < 0) throw new Error('未读取到积分余额，请稍后重试')
+        process.send?.({ type: 'desktop:reset', balance, updatedAt })
+    } else {
+        const today = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'Asia/Shanghai',
+            month: '2-digit',
+            day: '2-digit',
+            year: 'numeric'
+        }).format(new Date())
+        const searchesEnabled =
+            process.env.CONFIG_WORKER_DESKTOP_SEARCH === 'true' || process.env.CONFIG_WORKER_MOBILE_SEARCH === 'true'
+        const pendingSearch =
+            searchesEnabled &&
+            (!snapshot.searchCounters ||
+                Object.values(snapshot.searchCounters)
+                    .flat()
+                    .some(counter => counter.pointProgress < counter.pointProgressMax))
+        const pending = hasPendingEarnTasks(snapshot, today) || pendingSearch
+        if (!snapshot.streaks.length && !pending) throw new Error('未读取到每日任务状态')
+        process.send?.({
+            type: 'desktop:reset',
+            nextStreakResetAt: snapshot.nextStreakResetAt,
+            pending,
+            balance,
+            updatedAt
+        })
+    }
 } catch (error) {
     process.send?.({ type: 'desktop:reset-error', error: error.message })
     process.exitCode = 1

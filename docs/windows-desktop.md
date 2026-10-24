@@ -26,6 +26,12 @@ GitHub 的 **Code → Download ZIP**、**Source code (zip/tar.gz)** 和 `rewards
 
 保存的会话可能过期，额外验证或应用授权仍可能需要交互操作。遇到提示时请查看报告，必要时重新登录。后续章节说明自动运行、升级、数据位置及构建验证。
 
+## 首页积分余额
+
+首页「积分余额」卡片显示最近读取的可用余额和更新时间，取代原来的「最近积分变化」。登录完成后自动读取，任务报告或自动检查读取到的新余额也会更新卡片。点击「刷新余额」可单独查询，不执行任务或搜索；查询需要有效的桌面登录会话，任务运行期间不可刷新。
+
+余额会在本地保存，重启后仍可查看。刷新失败会保留上次余额并提示错误；未读取到余额时显示「暂无数据」，不会当作 0。运行前后积分仍可在「运行结果」中查看。
+
 ## Automatic runs
 
 Automatic runs and Windows startup are disabled by default. Enable them in app
@@ -95,13 +101,16 @@ Installed and portable builds use `%APPDATA%\Rewards Desktop` by default.
 | ------------------------------------------------------- | ------------------------------- |
 | Account session key, automatic runs, startup preference | `desktop.json`                  |
 | Task configuration                                      | `config.json`                   |
+| Last queried points balance and read time               | `balance.json`                  |
 | Browser sessions and fingerprints                       | `sessions/`                     |
 | Task reports                                            | `reports/`                      |
 | Check-in compensation reservations                      | `reports/app-checkin-recovery/` |
 | Automatic cycle reservations                            | `schedule-state.json`           |
 | Redacted logs, retained for 30 days                     | `logs/`                         |
 
-Use settings to open the data folder or export diagnostics. Diagnostics contain
+The desktop has no live-log page and does not stream logs to the UI. Check run
+results first, then use settings to open the data folder (`logs/`) or export
+diagnostics. Diagnostics contain
 runtime information and the latest seven days of redacted logs, excluding config,
 session databases, and screenshots. Review exports before sharing. Local session
 databases are not additionally encrypted; do not publish the data directory.
