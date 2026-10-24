@@ -28,6 +28,7 @@ export interface Snapshot {
     backendReady: boolean
     state: string
     error: string | null
+    interruption?: string | null
     lastExit: { code: number | null; signal?: string | null; error?: string } | null
     sessions: Array<{ platform: string; hasStorageState: boolean; updatedAt: string | null }>
     reports: TaskReport[]

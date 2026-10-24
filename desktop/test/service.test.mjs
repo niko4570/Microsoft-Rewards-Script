@@ -261,3 +261,88 @@ test('inspection holds the operation gate and releases it on failure', async t =
     await assert.rejects(service.scanReset(), /offline/)
     assert.equal(service.operation, null)
 })
+
+test('exit during an automatic run persists a visible manual-action notice and does not rerun', async t => {
+    const { service, backend, dataDirectory } = fixture(t, {
+        email: 'person@example.com',
+        startOnLogin: false,
+        schedule: { enabled: true }
+    })
+    backend.sessions = ['mobile', 'desktop'].map(platform => ({
+        email: service.settings.email,
+        platform,
+        hasStorageState: true
+    }))
+    const reset = new Date(Date.now() + 3600000).toISOString()
+    service.resetScanner = async () => ({ nextStreakResetAt: reset, pending: true })
+    await service.scheduler.tick()
+    assert.equal(backend.starts, 1)
+    await service.close()
+
+    const reopenedBackend = new FakeBackend()
+    reopenedBackend.sessions = backend.sessions
+    const reopened = new DesktopService({
+        executable: process.execPath,
+        resourceDirectory: root,
+        dataDirectory,
+        version: 'test',
+        backendFactory: () => reopenedBackend,
+        resetScanner: async () => ({ nextStreakResetAt: reset, pending: true })
+    })
+    assert.match((await reopened.snapshot()).interruption, /运行中断.*手动运行/)
+    await reopened.scheduler.tick()
+    assert.equal(reopenedBackend.starts, 0)
+    assert.match(reopened.scheduler.message, /运行中断/)
+    await reopened.startRun()
+    assert.equal(reopenedBackend.starts, 1)
+    assert.equal((await reopened.snapshot()).interruption, null)
+    assert.doesNotMatch((await reopened.snapshot()).automation.message, /运行中断/)
+    reopenedBackend.state = 'idle'
+    reopenedBackend.emit('status', { state: 'idle', lastExit: { code: 0, at: new Date().toISOString() } })
+    assert.equal(JSON.parse(fs.readFileSync(path.join(dataDirectory, 'run-state.json'))).status, 'finished')
+    await reopened.close()
+})
+
+test('manual interruption remains visible with automation disabled and blocks same-cycle automation when enabled', async t => {
+    const { service, backend } = fixture(t, {
+        email: 'person@example.com',
+        startOnLogin: false,
+        schedule: { enabled: false }
+    })
+    backend.sessions = ['mobile', 'desktop'].map(platform => ({
+        email: service.settings.email,
+        platform,
+        hasStorageState: true
+    }))
+    await service.startRun()
+    await service.stopRun()
+    assert.match((await service.snapshot()).interruption, /运行中断/)
+    await service.saveSettings({ ...service.settings, schedule: { enabled: true } })
+    service.resetScanner = async () => ({
+        nextStreakResetAt: new Date(Date.now() + 3600000).toISOString(),
+        pending: true
+    })
+    await service.scheduler.tick()
+    assert.equal(backend.starts, 1)
+    assert.match(service.scheduler.message, /运行中断/)
+})
+
+test('normal completion and backend failure update the persisted run state without an open window', async t => {
+    const { service, backend } = fixture(t, {
+        email: 'person@example.com',
+        startOnLogin: false,
+        schedule: { enabled: false }
+    })
+    backend.sessions = ['mobile', 'desktop'].map(platform => ({
+        email: service.settings.email,
+        platform,
+        hasStorageState: true
+    }))
+    await service.startRun()
+    backend.state = 'idle'
+    backend.emit('status', { state: 'idle', lastExit: { code: 0, at: new Date().toISOString() } })
+    assert.equal(service.runState.value.status, 'finished')
+    await service.startRun()
+    backend.emit('failure', '后台已退出')
+    assert.match((await service.snapshot()).interruption, /运行中断/)
+})

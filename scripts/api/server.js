@@ -136,7 +136,11 @@ const startedAt = Date.now()
 // The desktop supervisor tracks the task PID even if this API later crashes.
 if (process.env.MRS_DATA_DIR && process.send) {
     pm.on('status', status => {
-        if (process.connected) process.send({ type: 'desktop:status', pid: status.pid, state: status.state }, () => {})
+        if (process.connected)
+            process.send(
+                { type: 'desktop:status', pid: status.pid, state: status.state, lastExit: status.lastExit },
+                () => {}
+            )
     })
 }
 

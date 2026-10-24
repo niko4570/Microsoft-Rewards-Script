@@ -543,27 +543,22 @@ export class TaskRunner {
             this.bot.logger.error('main', 'TASK-REPORT', '本地运行报告保存失败')
         }
         const completed = this.report.tasks.filter(task => task.status === 'completed').length
-        const details = this.report.tasks
-            .filter(task => task.status !== 'completed')
-            .map(task => `${task.title}：${task.reason}`)
-        const streaks = this.report.streaks.map(
-            streak =>
-                `${streak.partner}：${streak.today ? '今日完成' : '今日未确认完成'}，${streak.days}/${streak.total} 天`
-        )
+        const skipped = this.report.tasks.filter(task => task.status === 'skipped').length
+        const needsReview = this.report.tasks.filter(task => !['completed', 'skipped'].includes(task.status))
+        const reviewTitles = [...new Set(needsReview.map(task => task.title))]
+        const review = reviewTitles.slice(0, 3).join('、') + (reviewTitles.length > 3 ? '等' : '')
         const delta =
             this.report.finalPoints !== undefined && this.report.initialPoints !== undefined
                 ? this.report.finalPoints - this.report.initialPoints
                 : '无法核验'
         const message = [
-            `每日任务报告：已确认完成 ${completed}/${this.report.tasks.length} 项`,
+            `每日任务报告：完成 ${completed} 项，正常跳过 ${skipped} 项`,
+            needsReview.length ? `需要检查 ${needsReview.length} 项：${review}（原因见明细）` : '需要检查：无',
             `积分变化：${delta}`,
-            `下次打卡重置：${this.report.nextStreakResetAt ? new Date(this.report.nextStreakResetAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) + '（北京时间，微软页面）' : '页面未提供，无法核验'}`,
-            ...details,
-            ...streaks,
-            `印章进度：${this.report.stamps ?? '无法核验'}`
+            `下次打卡重置：${this.report.nextStreakResetAt ? new Date(this.report.nextStreakResetAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) + '（北京时间，微软页面）' : '页面未提供，无法核验'}`
         ].join('\n')
         const telegram = this.bot.config.webhook.telegram
-        if (telegram?.enabled) await sendTelegram(telegram, message, details.length ? 'warn' : 'info')
+        if (telegram?.enabled) await sendTelegram(telegram, message, needsReview.length ? 'warn' : 'info')
         this.bot.logger.info('main', 'TASK-SUMMARY', message)
     }
 }

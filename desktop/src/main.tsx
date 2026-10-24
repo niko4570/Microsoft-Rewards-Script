@@ -1,7 +1,7 @@
 import './bridge'
 import { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import type { Settings, Snapshot } from './types'
+import type { Settings, Snapshot, TaskReport } from './types'
 import './styles.css'
 
 const stateNames: Record<string, string> = {
@@ -25,6 +25,25 @@ const taskNames: Record<string, string> = {
     unconfirmed: '未确认'
 }
 const formatTime = (value?: string | null) => (value ? new Date(value).toLocaleString('zh-CN') : '暂无')
+
+function ReportSummary({ tasks }: Pick<TaskReport, 'tasks'>) {
+    const completed = tasks.filter(task => task.status === 'completed').length
+    const skipped = tasks.filter(task => task.status === 'skipped').length
+    const needsReview = tasks.filter(task => !['completed', 'skipped'].includes(task.status))
+    const titles = [...new Set(needsReview.map(task => task.title))]
+    return (
+        <div>
+            <p>
+                完成 {completed} 项，正常跳过 {skipped} 项
+            </p>
+            <p className={needsReview.length ? 'notice' : 'muted'}>
+                {needsReview.length
+                    ? `需要检查 ${needsReview.length} 项：${titles.slice(0, 3).join('、')}${titles.length > 3 ? '等' : ''}（原因见明细）`
+                    : '需要检查：无'}
+            </p>
+        </div>
+    )
+}
 
 function App() {
     const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
@@ -146,6 +165,11 @@ function App() {
                 {(message || snapshot.error) && (
                     <div role="status" className={failed || snapshot.error ? 'notice error' : 'notice'}>
                         {message || snapshot.error}
+                    </div>
+                )}
+                {snapshot.interruption && (
+                    <div role="status" className="notice">
+                        {snapshot.interruption}
                     </div>
                 )}
 
@@ -298,6 +322,7 @@ function App() {
                                     <h3>{formatTime(item.startedAt)}</h3>
                                     <span>{item.finishedAt ? '已生成报告' : '状态未确认'}</span>
                                 </div>
+                                <ReportSummary tasks={item.tasks} />
                                 {item.error && <p className="notice error">{item.error}</p>}
                                 <p className="muted">
                                     积分：{item.initialPoints ?? '未读取'} → {item.finalPoints ?? '未读取'}

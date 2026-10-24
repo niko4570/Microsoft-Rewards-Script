@@ -1,11 +1,12 @@
 import fs from 'node:fs'
 import { atomicJson } from './data.mjs'
+import { interruptionMessage } from './runState.mjs'
 
 // The server's next reset identifies the current cycle. Never derive it from
 // local midnight or assume a daily interval. Persist attempts before starting.
 export class DesktopScheduler {
-    constructor({ file, settings, scan, trigger, log, now = () => new Date() }) {
-        Object.assign(this, { file, settings, scan, trigger, log, now })
+    constructor({ file, settings, scan, trigger, log, interrupted = () => false, now = () => new Date() }) {
+        Object.assign(this, { file, settings, scan, trigger, log, interrupted, now })
         this.state = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {}
         if (!this.state || typeof this.state !== 'object' || Array.isArray(this.state))
             throw new Error('定时记录损坏，请检查数据目录')
@@ -34,7 +35,9 @@ export class DesktopScheduler {
             this.state.nextResetAt = new Date(reset).toISOString()
             this.state.account = settings.email.toLowerCase()
             this.checkAt = reset + 60000 // allow the server a minute to refresh
-            if (!this.state.attempts.includes(cycle) && result.pending) {
+            if (this.interrupted(settings.email, this.state.nextResetAt)) {
+                this.message = interruptionMessage
+            } else if (!this.state.attempts.includes(cycle) && result.pending) {
                 // Busy gates run before a cycle is consumed; failed starts retry
                 // later. A successful start is the single automatic attempt.
                 this.state.attempts.push(cycle)

@@ -393,8 +393,56 @@ test('reports retain only recent own files and Telegram summary lists manual act
     assert.equal(files.filter(file => file.endsWith('.json')).length, 1)
     assert.ok(files.includes('unrelated.txt'))
     assert.equal(sent.length, 1)
-    assert.match(sent[0], /请手动登录/)
-    assert.match(sent[0], /印章进度：无法核验/)
+    assert.match(sent[0], /完成 0 项，正常跳过 0 项/)
+    assert.match(sent[0], /需要检查 1 项：运行中断/)
+    const report = JSON.parse(
+        await fs.readFile(
+            path.join(
+                directory,
+                files.find(file => file.endsWith('.json'))
+            ),
+            'utf8'
+        )
+    )
+    assert.equal(report.tasks[0].reason, '请手动登录')
+})
+
+test('summary counts normal skips without warnings and keeps review details in the report', async t => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'rewards-summary-test-'))
+    t.after(() => fs.rm(directory, { recursive: true, force: true }))
+    const sent = []
+    t.mock.method(http, 'httpRequest', async config => {
+        sent.push(config.data.text)
+        return {}
+    })
+    const f = fixture()
+    f.bot.config.webhook.telegram = { enabled: true, botToken: 'test', chatId: 'test' }
+    const runner = new TaskRunner(f.bot, 'test@example.com', directory)
+    runner.report.tasks.push(
+        { id: 'done', title: '签到', status: 'completed', reason: '已确认' },
+        { id: 'skip', title: '卡片', status: 'skipped', reason: '今日无可用卡片' }
+    )
+    await runner.publish()
+    assert.match(sent[0], /完成 1 项，正常跳过 1 项/)
+    assert.match(sent[0], /需要检查：无/)
+    assert.ok(sent[0].startsWith('ℹ️'))
+    assert.ok(!sent[0].includes('今日无可用卡片'))
+
+    const reviewRunner = new TaskRunner(f.bot, 'review@example.com', directory)
+    for (const [index, status] of ['failed', 'manual', 'unconfirmed', 'failed'].entries()) {
+        reviewRunner.report.tasks.push({
+            id: `review-${index}`,
+            title: `待检查${index}`,
+            status,
+            reason: '完整原因保留'
+        })
+    }
+    await reviewRunner.publish()
+    assert.ok(sent[1].startsWith('⚠️'))
+    assert.match(sent[1], /需要检查 4 项：待检查0、待检查1、待检查2等/)
+    assert.ok(!sent[1].includes('待检查3'))
+    assert.ok(!sent[1].includes('完整原因保留'))
+    assert.equal(reviewRunner.report.tasks.length, 4)
 })
 
 test('generic defaults remain compatible; env options enable tasks profile', () => {
