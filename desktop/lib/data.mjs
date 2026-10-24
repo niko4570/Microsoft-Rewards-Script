@@ -55,7 +55,7 @@ export function initializeData(directory, template) {
         config.workers.doDesktopSearch = false
         config.workers.doMobileSearch = false
         config.workers.doBonusSearches = false
-        for (const webhook of ['discord', 'ntfy', 'telegram']) {
+        for (const webhook of ['telegram']) {
             config.webhook[webhook].enabled = false
             for (const field of ['url', 'token', 'topic', 'botToken', 'chatId']) {
                 if (field in config.webhook[webhook]) config.webhook[webhook][field] = ''

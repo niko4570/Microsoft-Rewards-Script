@@ -372,6 +372,43 @@ test('Telegram special characters are plain text; long messages split, failures 
     assert.ok(logs.every(line => !line.includes('fake-token')))
 })
 
+test('legacy notification config is ignored while Telegram logging and filtering still work', async t => {
+    const { Logger } = loadCompiled('../../dist/logging/Logger')
+    const { flushTelegramQueue } = loadCompiled('../../dist/logging/Telegram')
+    const example = JSON.parse(await fs.readFile(new URL('../../config.tasks.example.json', import.meta.url)))
+    example.webhook.discord = { enabled: true, url: 'https://retired.invalid/discord' }
+    example.webhook.ntfy = { enabled: true, url: 'https://retired.invalid/ntfy', token: 'old-token' }
+    example.webhook.telegram = { enabled: true, botToken: 'fake-token', chatId: 'fake-chat' }
+    example.webhook.webhookLogFilter = { enabled: true, mode: 'whitelist', levels: ['error'] }
+    const config = validateConfig(example)
+    assert.equal(config.webhook.discord, undefined)
+    assert.equal(config.webhook.ntfy, undefined)
+    const overrides = computeOverrides({
+        CONFIG_DISCORD_ENABLED: 'true',
+        CONFIG_NTFY_ENABLED: 'true',
+        CONFIG_TELEGRAM_ENABLED: 'true'
+    })
+    assert.deepEqual(overrides.errors, [])
+    assert.deepEqual(
+        overrides.applied.map(item => item.path),
+        ['webhook.telegram.enabled']
+    )
+    const sent = []
+    t.mock.method(http, 'httpRequest', async request => {
+        sent.push(request)
+        return {}
+    })
+    t.mock.method(console, 'log', () => {})
+    t.mock.method(console, 'error', () => {})
+    const logger = new Logger({ config, userData: { userName: 'test' } })
+    logger.info('main', 'TEST', 'filtered info')
+    logger.error('main', 'TEST', 'preserved error')
+    await flushTelegramQueue()
+    assert.equal(sent.length, 1)
+    assert.equal(sent[0].url, 'https://api.telegram.org/botfake-token/sendMessage')
+    assert.match(sent[0].data.text, /preserved error/)
+})
+
 test('reports retain only recent own files and Telegram summary lists manual action', async t => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'rewards-report-test-'))
     t.after(() => fs.rm(directory, { recursive: true, force: true }))

@@ -119,6 +119,7 @@ export function redactSecrets(config) {
     const mask = '***REDACTED***'
     const wh = clone.webhook
     if (wh && typeof wh === 'object') {
+        // Old config files may still contain retired notification credentials.
         if (wh.discord?.url) wh.discord.url = mask
         if (wh.ntfy?.url) wh.ntfy.url = mask
         if (wh.ntfy?.token) wh.ntfy.token = mask
