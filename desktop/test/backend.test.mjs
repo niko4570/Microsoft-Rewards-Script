@@ -18,16 +18,19 @@ const require = createRequire(import.meta.url)
 
 test('API readiness uses a real random port, authenticates and respects isolated data', async t => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'Rewards API 测试 '))
-    t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+    let backend
+    t.after(async () => {
+        await backend?.close()
+        await fs.promises.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+    })
     const settings = initializeData(directory, path.join(root, 'config.tasks.example.json'))
-    const backend = new Backend({
+    backend = new Backend({
         executable: process.execPath,
         resourceDirectory: root,
         dataDirectory: directory,
         settings: () => settings,
         log: () => {}
     })
-    t.after(() => backend.close())
     await backend.start()
     assert.match(backend.endpoint, /^http:\/\/127\.0\.0\.1:\d+$/)
     const health = await backend.request('/health')
@@ -65,7 +68,11 @@ test('all config readers select desktop data even when cwd and resource config e
 
 test('backend crash terminates its tracked task instead of leaving it running', async t => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'desktop-process-test-'))
-    t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+    let backend
+    t.after(async () => {
+        await backend?.close()
+        await fs.promises.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+    })
     const resources = path.join(directory, 'resources')
     const data = path.join(directory, 'data')
     fs.mkdirSync(path.join(resources, 'scripts'), { recursive: true })
@@ -76,14 +83,13 @@ test('backend crash terminates its tracked task instead of leaving it running', 
     fs.writeFileSync(path.join(resources, 'package.json'), '{"name":"desktop-test-runtime"}')
     fs.writeFileSync(path.join(resources, 'dist/index.js'), 'setInterval(() => {}, 1000)')
     initializeData(data, path.join(root, 'config.tasks.example.json'))
-    const backend = new Backend({
+    backend = new Backend({
         executable: process.execPath,
         resourceDirectory: resources,
         dataDirectory: data,
         settings: () => defaultsForTest(),
         log: () => {}
     })
-    t.after(() => backend.close())
     await backend.start()
     const result = await backend.request('/start', 'POST', {})
     const pid = result.pid
@@ -112,7 +118,14 @@ function defaultsForTest() {
 
 test('real backend publishes completion so the run marker clears without renderer polling', async t => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'desktop-completion-test-'))
-    t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+    let backend
+    let timeout
+    t.after(async () => {
+        clearTimeout(timeout)
+        // Windows keeps the child's working directory locked until it exits.
+        await backend?.close()
+        await fs.promises.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+    })
     const resources = path.join(directory, 'resources')
     const data = path.join(directory, 'data')
     fs.mkdirSync(path.join(resources, 'scripts'), { recursive: true })
@@ -123,18 +136,16 @@ test('real backend publishes completion so the run marker clears without rendere
     fs.writeFileSync(path.join(resources, 'package.json'), '{"name":"desktop-test-runtime"}')
     fs.writeFileSync(path.join(resources, 'dist/index.js'), 'process.exit(0)')
     initializeData(data, path.join(root, 'config.tasks.example.json'))
-    const backend = new Backend({
+    backend = new Backend({
         executable: process.execPath,
         resourceDirectory: resources,
         dataDirectory: data,
         settings: () => defaultsForTest(),
         log: () => {}
     })
-    t.after(() => backend.close())
     const file = path.join(data, 'run-state.json')
     const state = new RunState(file)
     state.start('test@example.com', null)
-    let timeout
     const completed = new Promise((resolve, reject) => {
         timeout = setTimeout(() => reject(new Error('completion status was not published')), 5000)
         backend.on('status', status => {
@@ -142,7 +153,6 @@ test('real backend publishes completion so the run marker clears without rendere
             if (status.state === 'idle' && status.lastExit) resolve(status)
         })
     })
-    t.after(() => clearTimeout(timeout))
     await backend.start()
     await backend.request('/start', 'POST', {})
     const status = await completed
