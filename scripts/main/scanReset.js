@@ -18,9 +18,10 @@ const ReactFunc = require(path.join(process.env.MRS_RESOURCE_DIR, 'dist/browser/
 const { hasPendingEarnTasks } = require(path.join(process.env.MRS_RESOURCE_DIR, 'dist/functions/TaskPolicy.js'))
 const balanceOnly = process.argv.includes('--balance')
 let browser
-process.on('disconnect', () => {
+const onParentDisconnect = () => {
     void browser?.close().finally(() => process.exit(130))
-})
+}
+process.on('disconnect', onParentDisconnect)
 try {
     const { dbPath, exists } = getSessionDbPath(process.env.MRS_DATA_DIR, 'sessions')
     if (!exists) throw new Error('请先完成会话登录')
@@ -88,5 +89,8 @@ try {
     process.exitCode = 1
 } finally {
     await browser?.close()
-    process.disconnect?.()
+    // Our own successful shutdown also emits 'disconnect'. Only a parent
+    // disconnect should invoke the interruption handler and force exit 130.
+    process.off('disconnect', onParentDisconnect)
+    if (process.connected) process.disconnect()
 }

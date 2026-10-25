@@ -215,7 +215,7 @@ export class DesktopService extends EventEmitter {
                 const finish = error => {
                     clearTimeout(timer)
                     if (this.scanChild === child) this.scanChild = null
-                    if (error || failure || !result) reject(error || failure || new Error('重置时间检查未完成'))
+                    if (error || failure || !result) reject(failure || error || new Error('重置时间检查未完成'))
                     else resolve(result)
                 }
                 child.once('error', finish)

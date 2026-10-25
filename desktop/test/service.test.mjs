@@ -417,6 +417,32 @@ test('balance selects newest account observation including a lower post-redempti
     assert.equal(fs.existsSync(path.join(dataDirectory, 'balance.json')), false)
 })
 
+test('reset inspection preserves the child error when it exits unsuccessfully', async t => {
+    const { service, backend, dataDirectory } = fixture(t)
+    service.settings.email = 'person@example.com'
+    backend.sessions = ['mobile', 'desktop'].map(platform => ({
+        email: service.settings.email,
+        platform,
+        hasStorageState: true
+    }))
+    const runtime = path.join(dataDirectory, 'failed-scan-runtime')
+    fs.mkdirSync(path.join(runtime, 'scripts/main'), { recursive: true })
+    fs.writeFileSync(
+        path.join(runtime, 'scripts/main/scanReset.js'),
+        `
+        process.send({ type: 'desktop:reset-error', error: 'synthetic navigation error' }, () => {
+            process.exitCode = 1
+            process.disconnect()
+        })
+    `
+    )
+    service.resourceDirectory = runtime
+    await assert.rejects(service.scanReset(), /synthetic navigation error/)
+    assert.equal(service.operation, null)
+    assert.equal(service.scanChild, null)
+    assert.equal(backend.starts, 0)
+})
+
 test('balance refresh uses a read-only child flag and releases the operation gate', async t => {
     const { service, backend, dataDirectory } = fixture(t)
     service.settings.email = 'person@example.com'
