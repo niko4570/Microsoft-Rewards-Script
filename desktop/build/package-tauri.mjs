@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { normalizeZipTimestamps } from './zip-timestamps.mjs'
 
 if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('请在 Windows x64 上构建安装包')
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -53,6 +54,7 @@ fs.copyFileSync(
     path.join(target, 'bundle/nsis', installers[0]),
     path.join(release, `Rewards-Desktop-${version}-x64.exe`)
 )
+normalizeZipTimestamps(portable)
 const quote = value => "'" + value.replaceAll("'", "''") + "'"
 const zip = spawnSync(
     'powershell.exe',
