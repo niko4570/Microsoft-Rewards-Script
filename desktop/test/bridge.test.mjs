@@ -1,7 +1,26 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
+import { readFileSync } from 'node:fs'
 import { DesktopHost } from '../lib/host.mjs'
+
+test('renderer actions match the native allowlist and have host handlers', () => {
+    const bridge = readFileSync(new URL('../src/bridge.ts', import.meta.url), 'utf8')
+    const native = readFileSync(new URL('../src-tauri/src/main.rs', import.meta.url), 'utf8')
+    const rendererList = bridge.match(/const actions = \[([\s\S]*?)\] as const/)
+    const nativeList = native.match(/const ACTIONS: &\[&str\] = &\[([\s\S]*?)\];/)
+    assert.ok(rendererList, 'renderer action list must be found')
+    assert.ok(nativeList, 'native action allowlist must be found')
+    const rendererActions = new Set([...rendererList[1].matchAll(/'([^']+)'/g)].map(match => match[1]))
+    const nativeActions = new Set([...nativeList[1].matchAll(/"([^"]+)"/g)].map(match => match[1]))
+    assert.ok(rendererActions.size > 0)
+    assert.deepEqual(nativeActions, rendererActions)
+    const host = new DesktopHost({ service: new EventEmitter(), native: () => {}, version: 'test' })
+    for (const action of rendererActions) {
+        // quit is handled directly by the native shell; resume is host-internal.
+        if (action !== 'quit') assert.ok(Object.hasOwn(host.actions, action), `missing host handler: ${action}`)
+    }
+})
 
 test('private desktop bridge rejects extra login arguments and unknown privileged actions', async () => {
     const service = new EventEmitter()
