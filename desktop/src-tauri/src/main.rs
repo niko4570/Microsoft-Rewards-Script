@@ -58,6 +58,7 @@ const ACTIONS: &[&str] = &[
     "stop",
     "login",
     "cancelLogin",
+    "refreshBalance",
     "saveSettings",
     "restartBackend",
     "openDataDirectory",
@@ -224,6 +225,15 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn balance_refresh_accepts_no_arguments() {
+        assert!(validate_action("refreshBalance", &Value::Null).is_ok());
+        assert_eq!(
+            validate_action("refreshBalance", &serde_json::json!({ "account": "other" })),
+            Err("此操作不接受参数".into())
+        );
+    }
+
     #[test]
     fn commands_reject_unknown_actions_and_unexpected_arguments() {
         assert!(validate_action("login", &Value::Null).is_ok());

@@ -105,6 +105,12 @@ try {
     await page.getByText('积分余额', { exact: true }).waitFor()
     assert.equal(await page.getByText('最近积分变化', { exact: true }).count(), 0)
     assert.equal(await page.getByRole('button', { name: '刷新余额', exact: true }).isDisabled(), true)
+    // Exercise the native bridge without Microsoft credentials: reaching the
+    // service's session guard proves refreshBalance passed the shell allowlist.
+    await assert.rejects(
+        mainWorld(page, () => window.desktop.refreshBalance()),
+        /请先完成桌面会话登录/
+    )
     await mainWorld(page, () =>
         window.desktop.saveSettings({ email: 'smoke@example.com', schedule: { enabled: false }, startOnLogin: false })
     )
