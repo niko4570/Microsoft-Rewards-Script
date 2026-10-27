@@ -6,9 +6,16 @@ const require = createRequire(import.meta.url)
 const { default: Browser } = require('../../dist/browser/Browser.js')
 const { chromium } = require('patchright')
 
-test('desktop task launcher selects full Chromium in both modes; ordinary runs retain defaults', async t => {
+test('desktop task launcher uses the selected system browser in both modes; ordinary runs retain defaults', async t => {
+    const oldEnv = { ...process.env }
     const oldData = process.env.MRS_DATA_DIR
+    process.env.MRS_BROWSER_EXECUTABLE = process.execPath
+    process.env.MRS_BROWSER_NAME = 'edge'
     t.after(() => {
+        for (const key of ['MRS_BROWSER_EXECUTABLE', 'MRS_BROWSER_NAME']) {
+            if (oldEnv[key] === undefined) delete process.env[key]
+            else process.env[key] = oldEnv[key]
+        }
         if (oldData === undefined) delete process.env.MRS_DATA_DIR
         else process.env.MRS_DATA_DIR = oldData
     })
@@ -29,7 +36,8 @@ test('desktop task launcher selects full Chromium in both modes; ordinary runs r
             await assert.rejects(browser.createBrowser({ proxy: { url: '' } }), error => error === stop)
             const options = launches.at(-1)
             assert.equal(options.headless, headless)
-            assert.equal(options.channel, desktop ? 'chromium' : undefined)
+            assert.equal(options.channel, desktop ? 'msedge' : undefined)
+            assert.equal(options.executablePath, desktop ? process.execPath : undefined)
         }
     }
 })

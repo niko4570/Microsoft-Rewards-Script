@@ -8,6 +8,12 @@ import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import { DesktopService } from '../lib/service.mjs'
 
+const availableBrowser = preference => {
+    const id = preference === 'chrome' ? 'chrome' : 'edge'
+    const selected = { id, name: id, executablePath: process.execPath }
+    return { installed: [selected], selected, error: null }
+}
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 class FakeBackend extends EventEmitter {
     constructor() {
@@ -48,6 +54,7 @@ function fixture(t, savedSettings) {
         resourceDirectory: root,
         dataDirectory,
         version: '0.1.0',
+        browserDetector: availableBrowser,
         backendFactory: () => backend
     })
     t.after(async () => {
@@ -151,7 +158,7 @@ test('browser login needs no email input and keeps the session key on upgrade', 
             fs.mkdirSync(path.join(runtime, 'scripts/main'), { recursive: true })
             fs.writeFileSync(
                 path.join(runtime, 'scripts/main/manualLogin.js'),
-                'process.send({ args: process.argv.slice(2), email: process.env.ACCOUNT_1_EMAIL }); setInterval(() => {}, 1000)'
+                'process.send({ args: process.argv.slice(2), email: process.env.ACCOUNT_1_EMAIL, browser: process.env.MRS_BROWSER_NAME, executablePath: process.env.MRS_BROWSER_EXECUTABLE }); setInterval(() => {}, 1000)'
             )
             service.resourceDirectory = runtime
             await service.login()
@@ -163,6 +170,8 @@ test('browser login needs no email input and keeps the session key on upgrade', 
             const key = existingEmail || 'local@rewards.invalid'
             assert.deepEqual(message.args, ['--email', key, '--platform', 'both'])
             assert.equal(message.email, key)
+            assert.equal(message.browser, 'edge')
+            assert.equal(message.executablePath, process.execPath)
             assert.equal(JSON.parse(fs.readFileSync(path.join(dataDirectory, 'desktop.json'))).email, key)
             await service.cancelLogin()
         })
@@ -286,6 +295,7 @@ test('exit during an automatic run persists a visible manual-action notice and d
         resourceDirectory: root,
         dataDirectory,
         version: 'test',
+        browserDetector: availableBrowser,
         backendFactory: () => reopenedBackend,
         resetScanner: async () => ({ nextStreakResetAt: reset, pending: true })
     })
@@ -369,6 +379,7 @@ test('balance refresh needs only desktop login, persists zero, and does not star
         resourceDirectory: root,
         dataDirectory,
         version: 'test',
+        browserDetector: availableBrowser,
         backendFactory: () => new FakeBackend()
     })
     assert.equal((await reopened.snapshot()).balance.value, 0)
@@ -463,4 +474,54 @@ test('balance refresh uses a read-only child flag and releases the operation gat
     assert.equal(service.operation, null)
     assert.equal(service.scanChild, null)
     assert.equal(backend.starts, 0)
+})
+
+test('missing browsers block login, balance, manual and automatic work without reserving a cycle', async t => {
+    const { service, backend } = fixture(t, {
+        email: 'person@example.com',
+        startOnLogin: false,
+        schedule: { enabled: true }
+    })
+    backend.sessions = ['mobile', 'desktop'].map(platform => ({
+        email: service.settings.email,
+        platform,
+        hasStorageState: true
+    }))
+    service.browserDetector = () => ({ installed: [], selected: null, error: '请安装 Chrome 或 Microsoft Edge 后继续' })
+    service.resetScanner = () => {
+        throw new Error('must not scan')
+    }
+    await assert.rejects(service.login(), /请安装/)
+    await assert.rejects(service.refreshBalance(), /请安装/)
+    const error = await service.startRun().catch(error => error)
+    assert.match(error.message, /请安装/)
+    assert.equal(error.safeToRetry, true)
+    await service.scheduler.tick()
+    assert.match(service.scheduler.message, /请安装/)
+    assert.equal(backend.starts, 0)
+    assert.deepEqual(service.scheduler.state.attempts, [])
+    assert.equal(service.runState.value, null)
+    assert.equal((await service.snapshot()).state, 'idle')
+    service.browserDetector = availableBrowser
+    await service.detectBrowser()
+    assert.ok((await service.snapshot()).browser.selected)
+    await service.startRun()
+    assert.equal(backend.starts, 1)
+})
+
+test('browser settings restart the backend only while idle and old sessions survive', async t => {
+    const { service, backend } = fixture(t)
+    let restarts = 0
+    backend.start = async () => {
+        restarts++
+        backend.endpoint = 'local'
+    }
+    fs.writeFileSync(path.join(service.dataDirectory, 'sessions/marker'), 'saved-session')
+    await service.saveSettings({ ...service.settings, browser: 'chrome' })
+    assert.equal(service.browser.selected.id, 'chrome')
+    assert.equal(restarts, 1)
+    assert.equal(fs.readFileSync(path.join(service.dataDirectory, 'sessions/marker'), 'utf8'), 'saved-session')
+    backend.state = 'running'
+    await assert.rejects(service.saveSettings({ ...service.settings, browser: 'edge' }), /正在运行/)
+    assert.equal(service.settings.browser, 'chrome')
 })

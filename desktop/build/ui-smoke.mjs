@@ -119,9 +119,18 @@ try {
         /此操作不接受参数/
     )
     await page.getByRole('button', { name: '应用设置', exact: true }).click()
+    const browserState = await mainWorld(page, () => window.desktop.detectBrowser())
+    assert.ok(Array.isArray(browserState.installed))
+    const selector = page.getByLabel('任务浏览器', { exact: true })
+    await selector.selectOption('chrome')
     await page.getByRole('button', { name: '保存设置', exact: true }).click()
     await page.getByRole('status').filter({ hasText: '设置已保存' }).waitFor()
     assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'desktop.json'), 'utf8')).email, 'smoke@example.com')
+    assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'desktop.json'), 'utf8')).browser, 'chrome')
+    await selector.selectOption('auto')
+    await page.getByRole('button', { name: '保存设置', exact: true }).click()
+    await page.getByRole('status').filter({ hasText: '设置已保存' }).waitFor()
+
     await page.getByRole('button', { name: '任务总览', exact: true }).click()
     await page.getByRole('button', { name: '切换为任务＋搜索模式', exact: true }).click()
     await page.getByRole('heading', { name: '运行模式：任务＋搜索模式', exact: true }).waitFor()

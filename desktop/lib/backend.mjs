@@ -24,9 +24,9 @@ export async function killTree(pid) {
 }
 
 export class Backend extends EventEmitter {
-    constructor({ executable, resourceDirectory, dataDirectory, settings, log }) {
+    constructor({ executable, resourceDirectory, dataDirectory, settings, browser = () => null, log }) {
         super()
-        Object.assign(this, { executable, resourceDirectory, dataDirectory, settings, log })
+        Object.assign(this, { executable, resourceDirectory, dataDirectory, settings, browser, log })
         this.child = null
         this.taskPid = null
         this.endpoint = null
@@ -36,7 +36,12 @@ export class Backend extends EventEmitter {
         if (this.child) throw new Error('后台已启动')
         this.closing = false
         this.token = randomBytes(32).toString('hex')
-        this.env = backendEnvironment({ ...this, settings: this.settings(), token: this.token })
+        this.env = backendEnvironment({
+            ...this,
+            settings: this.settings(),
+            browser: this.browser(),
+            token: this.token
+        })
         const child = spawn(this.executable, [path.join(this.resourceDirectory, 'scripts/api/server.js')], {
             cwd: this.dataDirectory,
             env: this.env,

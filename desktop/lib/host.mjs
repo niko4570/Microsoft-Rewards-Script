@@ -9,6 +9,9 @@ export class DesktopHost {
         this.updater = updater || new DesktopUpdater({ version, onChange: () => this.changed() })
         this.actions = {
             snapshot: () => this.snapshot(),
+            detectBrowser: () => service.detectBrowser(),
+            downloadChrome: () => this.native('downloadChrome'),
+            downloadEdge: () => this.native('downloadEdge'),
             checkUpdate: () => this.updater.check(),
             downloadUpdate: () => this.updater.download(name => this.native('saveFile', { name, kind: 'installer' })),
             showUpdateFile: () => {

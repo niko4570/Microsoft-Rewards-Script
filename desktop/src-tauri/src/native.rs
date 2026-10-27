@@ -55,6 +55,17 @@ pub fn invoke(app: &AppHandle, custom: bool, request: &Value) -> Result<Value, S
                 "取消".into()
             ))
             .blocking_show())),
+        "downloadChrome" | "downloadEdge" => {
+            let url = if request["action"] == "downloadChrome" {
+                "https://www.google.com/chrome/"
+            } else {
+                "https://www.microsoft.com/edge/download"
+            };
+            app.opener()
+                .open_url(url, None::<&str>)
+                .map_err(|e| e.to_string())?;
+            Ok(Value::Null)
+        }
         "openDirectory" => {
             app.opener()
                 .open_path(value.as_str().ok_or("缺少目录")?, None::<&str>)

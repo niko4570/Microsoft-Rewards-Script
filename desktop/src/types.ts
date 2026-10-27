@@ -1,6 +1,7 @@
 export interface Settings {
     email: string
     mode: 'tasks' | 'tasks-search'
+    browser: 'auto' | 'chrome' | 'edge'
     schedule: { enabled: boolean }
     startOnLogin: boolean
 }
@@ -14,7 +15,14 @@ export interface TaskReport {
     tasks: Array<{ id: string; title: string; status: string; reason: string }>
 }
 
+export interface InstalledBrowser {
+    id: 'chrome' | 'edge'
+    name: string
+    executablePath: string
+}
+
 export interface Snapshot {
+    browser: { installed: InstalledBrowser[]; selected: InstalledBrowser | null; error: string | null }
     balance: { value: number | null; updatedAt: string | null; error: string | null }
     version: string
     update: {
@@ -37,6 +45,9 @@ export interface Snapshot {
 
 export interface DesktopBridge {
     snapshot(): Promise<Snapshot>
+    detectBrowser(): Promise<Snapshot['browser']>
+    downloadChrome(): Promise<void>
+    downloadEdge(): Promise<void>
     checkUpdate(): Promise<void>
     downloadUpdate(): Promise<boolean>
     showUpdateFile(): Promise<void>

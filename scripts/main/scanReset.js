@@ -3,6 +3,7 @@
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { chromium } from 'patchright'
+import { browserLaunchOptions } from '../browserLaunch.js'
 import { newInjectedContext } from 'fingerprint-injector'
 import { getSessionDbPath, openSessionDb, loadSessionRow, closeSessionDb } from '../utils.js'
 import { readResetPage } from './readResetPage.js'
@@ -33,7 +34,8 @@ try {
         closeSessionDb(db)
     }
     if (!session?.storageState) throw new Error('请先完成桌面会话登录')
-    browser = await chromium.launch({ headless: true, channel: 'chromium' })
+    browser = await chromium.launch({ headless: true, ...browserLaunchOptions() })
+    console.log(`Browser: ${process.env.MRS_BROWSER_NAME} ${browser.version()}`)
     const options = { storageState: session.storageState }
     const context = session.fingerprint
         ? await newInjectedContext(browser, { fingerprint: session.fingerprint, newContextOptions: options })

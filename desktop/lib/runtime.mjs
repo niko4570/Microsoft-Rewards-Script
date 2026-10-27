@@ -1,6 +1,13 @@
 import path from 'node:path'
 
-export function backendEnvironment({ dataDirectory, resourceDirectory, settings, token, source = process.env }) {
+export function backendEnvironment({
+    dataDirectory,
+    resourceDirectory,
+    settings,
+    token,
+    browser,
+    source = process.env
+}) {
     // Do not inherit the developer's accounts, proxy, Node injection or CONFIG_*.
     const env = {}
     for (const key of [
@@ -15,6 +22,9 @@ export function backendEnvironment({ dataDirectory, resourceDirectory, settings,
         'HOME',
         'USERPROFILE',
         'LOCALAPPDATA',
+        'ProgramFiles',
+        'ProgramFiles(x86)',
+        'ProgramW6432',
         'APPDATA',
         'COMSPEC',
         'LANG',
@@ -28,7 +38,8 @@ export function backendEnvironment({ dataDirectory, resourceDirectory, settings,
         ...env,
         MRS_DATA_DIR: dataDirectory,
         MRS_RESOURCE_DIR: resourceDirectory,
-        PLAYWRIGHT_BROWSERS_PATH: path.join(resourceDirectory, 'browsers'),
+        MRS_BROWSER_EXECUTABLE: browser?.executablePath || '',
+        MRS_BROWSER_NAME: browser?.id || '',
         API_HOST: '127.0.0.1',
         API_PORT: '0',
         API_TOKEN: token,

@@ -2,7 +2,7 @@
 
 Rewards Desktop 是本仓库基于 [TheNetsky/Microsoft-Rewards-Script](https://github.com/TheNetsky/Microsoft-Rewards-Script) 扩展的中文 Windows 桌面应用。上游提供脚本基础，本 fork 增加桌面界面与中国区域单账号任务流程适配，并独立维护桌面发布。项目沿用 [GPL-3.0-or-later](../LICENSE)。
 
-应用内置 Node.js 和 Chromium，使用时无需安装 Git、Node.js、Docker 或 WSL。已验证环境为 Windows 11 x64；其他 Windows 版本、其他地区与多账号桌面使用尚未完成验证。
+应用内置 Node.js，自动化任务使用系统已安装的 Chrome 或 Microsoft Edge 稳定版，不再携带 Chromium。使用时无需安装 Git、Node.js、Docker 或 WSL。已验证环境为 Windows 11 x64；其他 Windows 版本、其他地区与多账号桌面使用尚未完成验证。
 
 桌面最新版以 [最新发布页](https://github.com/niko4570/Microsoft-Rewards-Script/releases/latest) 为准。0.2.0 起使用 Tauri / WebView2；旧版 Electron 的人工验收不代表新外壳已完成同样验收。请从 GitHub Release 的 **Assets** 下载发布文件。
 
@@ -25,6 +25,18 @@ GitHub 的 **Code → Download ZIP**、**Source code (zip/tar.gz)** 和 `rewards
 5. 开启桌面自动运行前，暂停同账号的旧 Docker 或脚本定时任务。自动运行和开机启动默认关闭，开启后需保持应用或托盘运行。
 
 保存的会话可能过期，额外验证或应用授权仍可能需要交互操作。遇到提示时请查看报告，必要时重新登录。后续章节说明自动运行、升级、数据位置及构建验证。
+
+## 系统浏览器
+
+首次打开时应用检测已安装的 Chrome / Edge。默认选择系统 HTTPS 默认浏览器；默认浏览器不是这两种或无法读取时，依次选择 Edge、Chrome。可在「应用设置 → 任务浏览器」指定其中一种，保存后生效；任务、登录期间不能切换。
+
+如果没有可用浏览器，应用仍可查看设置和报告，但不能登录、运行任务或刷新余额。点击「下载 Chrome / Edge」打开官方网站，安装后点击「重新检测」。明确指定的浏览器缺失时不会自动改用另一种，请安装或修改选择。自动调度在失败后按原有五分钟间隔重试，不会将缺失浏览器记为已执行周期。
+
+应用启动独立浏览器实例并使用自己的会话，不读取用户日常浏览器个人资料。已有应用会话继续保留；切换浏览器或会话过期后可能需要重新登录。浏览器自动更新、企业策略可能影响自动化兼容性；启动失败可查看错误或导出诊断。此改造主要减少安装体积，运行时仍需浏览器进程。
+
+2026-10-27 在 `feature/desktop-system-browser` 本地验证：桌面测试 64 项、任务回归测试 54 项、Windows 原生测试 3 项通过；构建、ESLint、Prettier 和 Rust 格式检查通过。使用本机 Edge 156.0.4314.42、Chrome 155.0.8059.86 分别验证有窗口/无窗口启动、页面脚本与独立会话恢复。新代码与旧安装中的 Windows 依赖组成的隔离运行目录通过 SQLite、原生依赖和 API 鉴权检查；交叉编译的新 Tauri 程序通过浏览器选择保存、真实后台、窗口销毁重建、单实例和正常退出检查。
+
+这些检查复用了已安装的 Windows Node/依赖，不代表重新构建的正式 NSIS 安装包验收。Chrome / Edge 真实账号登录、实际 Rewards 任务、代理端到端使用和旧版升级仍须单独验证，不以旧 Chromium 的验收结果代替。安装包、ZIP 和解压体积需在相同 Windows 构建环境中实测后比较。
 
 ## 首页积分余额
 
@@ -167,8 +179,8 @@ npm run test:native --prefix desktop
 npm run desktop:package
 ```
 
-Packaging prepares Windows production dependencies and one full Chromium bundle,
-checks visible and headless browser startup, validates the isolated backend API,
+Packaging prepares Windows production dependencies without browser binaries,
+checks installed Chrome / Edge in visible and headless modes, validates the isolated backend API,
 builds a Tauri NSIS installer and portable ZIP, and tests the packaged WebView2 UI.
 The installer downloads the shared Evergreen WebView2 Runtime only if missing.
 Portable users must already have WebView2 Runtime installed. Linux/WSL dependencies cannot be copied into a Windows

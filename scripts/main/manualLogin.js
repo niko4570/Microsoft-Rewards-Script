@@ -8,6 +8,7 @@ import { FingerprintGenerator } from 'fingerprint-generator'
 import { newInjectedContext } from 'fingerprint-injector'
 import ms from 'ms'
 import { chromium } from 'patchright'
+import { browserLaunchOptions } from '../browserLaunch.js'
 
 import {
     buildProxyConfig,
@@ -329,10 +330,11 @@ async function runPlatform({ account, config, dbPath, platform, fresh }) {
 
     const browser = await chromium.launch({
         headless: false,
-        ...(process.env.MRS_DATA_DIR ? { channel: 'chromium' } : {}),
+        ...browserLaunchOptions(),
         ...(proxy ? { proxy } : {}),
         args: [...BROWSER_ARGS, ...sandboxArgs, ...certArgs]
     })
+    log('INFO', `Browser: ${process.env.MRS_BROWSER_NAME || 'Chromium'} ${browser.version()}`)
     desktopBrowser = browser
     if (desktopCancelled) {
         await browser.close().catch(() => {})

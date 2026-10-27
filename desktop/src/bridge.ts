@@ -4,6 +4,9 @@ import type { DesktopBridge, Snapshot } from './types'
 
 const actions = [
     'snapshot',
+    'detectBrowser',
+    'downloadChrome',
+    'downloadEdge',
     'checkUpdate',
     'downloadUpdate',
     'showUpdateFile',

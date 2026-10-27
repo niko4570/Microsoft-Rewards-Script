@@ -7,6 +7,7 @@ import { loadSession, saveFingerprint } from '../util/SessionStore'
 import { fingerprintMatchesLocale } from '../util/Locale'
 import { formatBrowserProxyServer } from '../util/Proxy'
 import { UserAgentManager } from './UserAgent'
+import { browserLaunchOptions } from './BrowserLaunch'
 
 import type { Account } from '../interface/Account'
 
@@ -85,12 +86,12 @@ class Browser {
             this.bot.logger.info(
                 this.bot.isMobile,
                 'BROWSER',
-                `Launching bundled patched Chromium (Edge UA) | headless=${headless} | platform=${process.platform} | proxy=${hasProxy ? 'yes' : 'no'} | tls=${ignoreCertificateErrors ? 'verification-disabled' : 'verified'} | sandbox=${sandboxDisabled ? 'disabled-root' : 'enabled'}`
+                `Launching ${process.env.MRS_DATA_DIR ? process.env.MRS_BROWSER_NAME : 'bundled Chromium'} (Edge UA) | headless=${headless} | platform=${process.platform} | proxy=${hasProxy ? 'yes' : 'no'} | tls=${ignoreCertificateErrors ? 'verification-disabled' : 'verified'} | sandbox=${sandboxDisabled ? 'disabled-root' : 'enabled'}`
             )
 
             browser = await rebrowser.chromium.launch({
                 headless,
-                ...(process.env.MRS_DATA_DIR ? { channel: 'chromium' } : {}),
+                ...browserLaunchOptions(),
                 ...(proxyConfig && { proxy: proxyConfig }),
                 args: [...Browser.BROWSER_ARGS, ...sandboxArgs, ...certArgs]
             })
@@ -101,6 +102,7 @@ class Browser {
         }
 
         try {
+            this.bot.logger.info(this.bot.isMobile, 'BROWSER', `Browser version: ${browser.version()}`)
             const session = loadSession(this.bot.config.sessionPath, account.email, this.bot.isMobile)
 
             if (session?.storageState) {
