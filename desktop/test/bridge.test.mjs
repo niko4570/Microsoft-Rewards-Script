@@ -63,3 +63,15 @@ test('balance refresh is exposed through the private bridge without arguments', 
     await assert.rejects(host.invoke('refreshBalance', { account: 'other' }), /此操作不接受参数/)
     assert.equal(refreshes, 1)
 })
+
+test('browser detection and fixed download actions cross the private bridge without arbitrary URLs', async () => {
+    const service = new EventEmitter()
+    service.detectBrowser = () => ({ selected: null })
+    const requests = []
+    const host = new DesktopHost({ service, version: 'test', native: (...args) => requests.push(args) })
+    assert.deepEqual(await host.invoke('detectBrowser'), { selected: null })
+    await host.invoke('downloadChrome')
+    await host.invoke('downloadEdge')
+    assert.deepEqual(requests, [['downloadChrome'], ['downloadEdge']])
+    await assert.rejects(host.invoke('downloadChrome', 'https://other.example'), /不接受参数/)
+})

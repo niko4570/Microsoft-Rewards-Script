@@ -20,7 +20,10 @@ async function scan(t, { balanceOnly = false, fail = false } = {}) {
     ]
     const html = `<script>self.__next_f.push([1,${JSON.stringify(JSON.stringify(objects))}])</script>`
     const modules = {
-        patchright: `export const chromium = { async launch() { return {
+        patchright: `export const chromium = { async launch(options) {
+            if (options.channel !== 'msedge' || options.executablePath !== process.execPath) throw new Error('wrong scanner browser');
+            return {
+            version: () => 'test-browser',
             async close() { console.log('browser closed') },
             async newContext() { return { async newPage() { return {
                 async goto() {
@@ -49,7 +52,14 @@ async function scan(t, { balanceOnly = false, fail = false } = {}) {
     )
     const child = fork(path.join(root, 'scripts/main/scanReset.js'), balanceOnly ? ['--balance'] : [], {
         execArgv: ['--import', pathToFileURL(preload).href],
-        env: { ...process.env, MRS_RESOURCE_DIR: root, ACCOUNT_1_EMAIL: 'test@example.com' },
+        env: {
+            ...process.env,
+            MRS_RESOURCE_DIR: root,
+            MRS_DATA_DIR: temporary,
+            MRS_BROWSER_EXECUTABLE: process.execPath,
+            MRS_BROWSER_NAME: 'edge',
+            ACCOUNT_1_EMAIL: 'test@example.com'
+        },
         silent: true
     })
     t.after(() => {

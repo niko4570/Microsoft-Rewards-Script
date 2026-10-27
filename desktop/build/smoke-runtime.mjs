@@ -3,6 +3,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { assertNoBundledBrowser } from './browser-resources.mjs'
+import { detectBrowsers } from '../lib/browser.mjs'
 import { Backend } from '../lib/backend.mjs'
 import { defaults, initializeData } from '../lib/data.mjs'
 
@@ -12,12 +14,11 @@ const executable = path.join(runtime, 'node.exe')
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'Rewards 桌面 smoke '))
 let backend
 try {
-    const browserDirectories = fs.readdirSync(path.join(runtime, 'browsers'))
-    if (
-        browserDirectories.filter(name => /^chromium-\d+$/.test(name)).length !== 1 ||
-        browserDirectories.some(name => name.includes('headless'))
-    )
-        throw new Error('桌面包必须仅携带一套完整 Chromium')
+    assertNoBundledBrowser(runtime)
+    const browsers = detectBrowsers().installed
+    if (!browsers.length) throw new Error('构建验收需要已安装的 Chrome 或 Edge')
+    if (process.env.MRS_REQUIRE_BOTH_BROWSERS === '1' && browsers.length !== 2)
+        throw new Error('CI 验收要求同时安装 Chrome 和 Edge')
     initializeData(data, path.join(runtime, 'config.tasks.example.json'))
     // Load the actual login entry point without opening a browser or using an account.
     // Run from isolated user data without inherited Node injection settings.
@@ -48,17 +49,22 @@ try {
         requireRuntime('impit');
         const { chromium } = requireRuntime('patchright');
         (async () => {
+            for (const selected of ${JSON.stringify(browsers)}) {
             for (const headless of [false, true]) {
-                const browser = await chromium.launch({ channel: 'chromium', headless });
+                const options = requireRuntime('./dist/browser/BrowserLaunch.js').browserLaunchOptions({ MRS_DATA_DIR: ${JSON.stringify(data)}, MRS_BROWSER_EXECUTABLE: selected.executablePath, MRS_BROWSER_NAME: selected.id });
+                const browser = await chromium.launch({ ...options, headless });
                 try {
                     const page = await browser.newPage();
-                    await page.goto('data:text/html,<title>shared Chromium</title>');
-                    if (await page.title() !== 'shared Chromium') throw new Error('Browser page probe failed');
+                    await page.goto('data:text/html,<title>system browser</title>');
+                    if (await page.title() !== 'system browser') throw new Error('Browser page probe failed');
+                    if (await page.evaluate(() => 6 * 7) !== 42) throw new Error('Browser script probe failed');
+                    console.log(selected.name, browser.version(), 'headless=' + headless, 'PASS');
                 } finally {
                     await browser.close();
                 }
             }
-            console.log('SQLite, native dependencies and shared Chromium (headed/headless): PASS');
+            }
+            console.log('SQLite, native dependencies and system browsers (headed/headless): PASS');
         })().catch(error => { console.error(error); process.exit(1) });
     `
     const result = spawnSync(executable, ['-e', probe], {
@@ -67,7 +73,7 @@ try {
             ...process.env,
             NODE_PATH: '',
             NODE_OPTIONS: '',
-            PLAYWRIGHT_BROWSERS_PATH: path.join(runtime, 'browsers')
+            PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
         },
         stdio: 'inherit',
         timeout: 60000

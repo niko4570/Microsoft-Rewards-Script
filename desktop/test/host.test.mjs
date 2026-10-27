@@ -59,7 +59,13 @@ test('Tauri Node host uses private pipes, persists settings and closes its real 
     )
     await assert.rejects(request('login', 'unexpected@example.com'), /此操作不接受参数/)
     await assert.rejects(request('constructor'), /不支持的操作/)
-    const settings = { mode: 'tasks', email: 'host@example.com', schedule: { enabled: false }, startOnLogin: true }
+    const settings = {
+        browser: 'auto',
+        mode: 'tasks',
+        email: 'host@example.com',
+        schedule: { enabled: false },
+        startOnLogin: true
+    }
     rejectAutostart = true
     await assert.rejects(request('saveSettings', settings), /autostart fixture rejected/)
     assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'desktop.json'))).email, '')

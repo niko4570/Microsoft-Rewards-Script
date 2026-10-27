@@ -7,6 +7,7 @@ import { atomicJson, initializeData, validateSettings, DailyLog, readReports, re
 import { backendEnvironment } from './runtime.mjs'
 import { DesktopScheduler } from './scheduler.mjs'
 import { RunState, interruptionMessage } from './runState.mjs'
+import { detectBrowsers } from './browser.mjs'
 
 export class DesktopService extends EventEmitter {
     constructor({
@@ -16,11 +17,14 @@ export class DesktopService extends EventEmitter {
         version,
         backendFactory = options => new Backend(options),
         resetScanner,
+        browserDetector = detectBrowsers,
         setAutoStart = () => {}
     }) {
         super()
         Object.assign(this, { executable, resourceDirectory, dataDirectory, version, setAutoStart })
         this.settings = initializeData(dataDirectory, path.join(resourceDirectory, 'config.tasks.example.json'))
+        this.browserDetector = browserDetector
+        this.browser = this.browserDetector(this.settings.browser)
         this.logger = new DailyLog(path.join(dataDirectory, 'logs'))
         this.balance = null
         this.balanceError = null
@@ -43,6 +47,7 @@ export class DesktopService extends EventEmitter {
             resourceDirectory,
             dataDirectory,
             settings: () => this.settings,
+            browser: () => this.browser.selected,
             log: line => this.log(line)
         })
         this.backend.on('failure', message => {
@@ -108,6 +113,22 @@ export class DesktopService extends EventEmitter {
         this.runState.observe(status)
         if (status.state !== 'idle') throw new Error('任务正在运行，请先停止')
     }
+    async detectBrowser() {
+        this.browser = this.browserDetector(this.settings.browser)
+        this.emit('change')
+        return this.browser
+    }
+    async requireBrowser(forTask = false) {
+        await this.detectBrowser()
+        if (!this.browser.selected) throw new Error(this.browser.error)
+        // API children inherit their browser at startup. Refresh that environment
+        // only while idle, before submitting a task, never during a running task.
+        if (forTask && this.backend.env?.MRS_BROWSER_EXECUTABLE !== this.browser.selected.executablePath) {
+            await this.backend.close()
+            await this.backend.start()
+        }
+        this.log(`使用 ${this.browser.selected.name}`)
+    }
     async startRun(source = '手动') {
         let submitted = false
         try {
@@ -121,6 +142,7 @@ export class DesktopService extends EventEmitter {
                 )
                 if (!['mobile', 'desktop'].every(platform => stored.some(session => session.platform === platform)))
                     throw new Error('请先完成手机和桌面会话登录')
+                await this.requireBrowser(true)
                 this.runState.start(
                     this.settings.email,
                     this.scheduler.state.account === this.settings.email.toLowerCase()
@@ -179,6 +201,7 @@ export class DesktopService extends EventEmitter {
             )
                 throw new Error(balanceOnly ? '请先完成桌面会话登录' : '请先完成手机和桌面会话登录')
             if (this.stopping) throw new Error('应用正在退出')
+            await this.requireBrowser()
             if (this.resetScanner) {
                 const result = await this.resetScanner(balanceOnly)
                 this.rememberBalance(result)
@@ -193,7 +216,12 @@ export class DesktopService extends EventEmitter {
                     ],
                     {
                         cwd: this.dataDirectory,
-                        env: backendEnvironment({ ...this, settings: this.settings, token: '' }),
+                        env: backendEnvironment({
+                            ...this,
+                            settings: this.settings,
+                            browser: this.browser.selected,
+                            token: ''
+                        }),
                         detached: process.platform !== 'win32',
                         windowsHide: true,
                         stdio: ['ignore', 'pipe', 'pipe', 'ipc']
@@ -250,13 +278,14 @@ export class DesktopService extends EventEmitter {
                 throw error
             }
             this.settings = next
+            await this.detectBrowser()
             if (next.email !== previous.email) {
                 this.balance = null
                 this.balanceError = null
                 fs.rmSync(path.join(this.dataDirectory, 'balance.json'), { force: true })
             }
             this.scheduler.reset()
-            if (next.email !== previous.email || next.mode !== previous.mode) {
+            if (next.email !== previous.email || next.mode !== previous.mode || next.browser !== previous.browser) {
                 await this.backend.close()
                 await this.backend.start()
             }
@@ -271,7 +300,13 @@ export class DesktopService extends EventEmitter {
         if (!this.settings.email) await this.saveSettings({ ...this.settings, email: 'local@rewards.invalid' })
         return this.exclusive('login', async () => {
             await this.ensureIdle()
-            const env = backendEnvironment({ ...this, settings: this.settings, token: '' })
+            await this.requireBrowser()
+            const env = backendEnvironment({
+                ...this,
+                settings: this.settings,
+                browser: this.browser.selected,
+                token: ''
+            })
             const child = spawn(
                 this.executable,
                 [
@@ -388,6 +423,7 @@ export class DesktopService extends EventEmitter {
             balance: { value: balance?.value ?? null, updatedAt: balance?.updatedAt ?? null, error: this.balanceError },
             version: this.version,
             settings: this.settings,
+            browser: this.browser,
             automation: {
                 nextResetAt:
                     this.scheduler.state.account === this.settings.email.toLowerCase()
@@ -435,6 +471,7 @@ export class DesktopService extends EventEmitter {
                 this.dataDirectory,
                 path.join(this.resourceDirectory, 'config.tasks.example.json')
             )
+            this.browser = this.browserDetector(this.settings.browser)
             this.logger = new DailyLog(path.join(this.dataDirectory, 'logs'))
             this.scheduler.state = { attempts: [] }
             this.runState.value = null

@@ -51,6 +51,9 @@ fn show_window(app: &tauri::AppHandle) -> tauri::Result<()> {
 
 const ACTIONS: &[&str] = &[
     "snapshot",
+    "detectBrowser",
+    "downloadChrome",
+    "downloadEdge",
     "checkUpdate",
     "downloadUpdate",
     "showUpdateFile",

@@ -165,6 +165,30 @@ function App() {
                     </div>
                 )}
 
+                <section className="panel" aria-label="浏览器状态">
+                    <p>任务浏览器：{snapshot.browser.selected?.name || '未检测到可用浏览器'}</p>
+                    {snapshot.browser.error && (
+                        <p role="status" className="notice error">
+                            {snapshot.browser.error}
+                        </p>
+                    )}
+                    <div className="actions">
+                        <button
+                            disabled={busy}
+                            onClick={() => void act(() => window.desktop.detectBrowser(), '浏览器检测完成')}
+                        >
+                            重新检测
+                        </button>
+                        {!snapshot.browser.selected && (
+                            <>
+                                <button onClick={() => void act(() => window.desktop.downloadChrome())}>
+                                    下载 Chrome
+                                </button>
+                                <button onClick={() => void act(() => window.desktop.downloadEdge())}>下载 Edge</button>
+                            </>
+                        )}
+                    </div>
+                </section>
                 {tab === 'overview' && (
                     <>
                         <section className="hero">
@@ -186,7 +210,7 @@ function App() {
                             <div className="actions">
                                 <button
                                     className="primary"
-                                    disabled={busy || !idle || !configured || !loggedIn}
+                                    disabled={busy || !idle || !configured || !loggedIn || !snapshot.browser.selected}
                                     onClick={() =>
                                         void act(() => window.desktop.start(), '任务已启动，请查看日志和运行结果')
                                     }
@@ -237,7 +261,7 @@ function App() {
                                     使用手动浏览器登录，不填写或保存密码。第一版按中国区域、中文运行。
                                 </p>
                                 <button
-                                    disabled={busy || !idle}
+                                    disabled={busy || !idle || !snapshot.browser.selected}
                                     onClick={() => void act(() => window.desktop.login(), '请在浏览器中完成登录')}
                                 >
                                     打开浏览器登录
@@ -284,6 +308,7 @@ function App() {
                                         busy ||
                                         !idle ||
                                         !configured ||
+                                        !snapshot.browser.selected ||
                                         !snapshot.sessions.some(
                                             session => session.platform === 'desktop' && session.hasStorageState
                                         )
@@ -379,7 +404,23 @@ function App() {
                                 )
                             }}
                         >
-                            <h3>自动运行</h3>
+                            <h3>浏览器与自动运行</h3>
+                            <label htmlFor="task-browser">任务浏览器</label>
+                            <select
+                                id="task-browser"
+                                value={settings.browser}
+                                disabled={busy || !idle}
+                                onChange={event =>
+                                    setSettings({ ...settings, browser: event.target.value as Settings['browser'] })
+                                }
+                            >
+                                <option value="auto">自动（优先系统默认，备用 Edge / Chrome）</option>
+                                <option value="chrome">Google Chrome</option>
+                                <option value="edge">Microsoft Edge</option>
+                            </select>
+                            <p className="muted">
+                                使用独立浏览器实例和应用会话，不读取日常浏览器的个人资料。切换浏览器后如会话失效，请重新登录。
+                            </p>
                             <label className="check">
                                 <input
                                     type="checkbox"

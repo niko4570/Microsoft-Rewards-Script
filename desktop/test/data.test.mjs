@@ -46,6 +46,9 @@ test('rejects account injection and invalid automatic settings; migrates fixed s
     assert.throws(() => validateSettings({ ...defaults, mode: 'unknown' }), /运行模式/)
     const legacy = { ...defaults }
     delete legacy.mode
+    delete legacy.browser
+    assert.equal(validateSettings(legacy).browser, 'auto')
+    assert.throws(() => validateSettings({ ...defaults, browser: 'firefox' }), /浏览器/)
     assert.equal(validateSettings(legacy).mode, 'tasks')
 })
 
@@ -61,13 +64,19 @@ test('backend inherits OS essentials but never developer credentials or injectio
             ACCOUNT_2_EMAIL: 'private@example.com',
             CONFIG_TASKS_ONLY: 'false',
             API_TOKEN: 'old',
-            HTTPS_PROXY: 'private'
+            HTTPS_PROXY: 'private',
+            MRS_BROWSER_EXECUTABLE: 'injected',
+            MRS_BROWSER_NAME: 'chrome',
+            PLAYWRIGHT_BROWSERS_PATH: 'old-cache'
         }
     })
     assert.equal(env.PATH, '/bin')
     assert.equal(env.ACCOUNT_1_EMAIL, 'chosen@example.com')
     assert.equal(env.API_TOKEN, 'fresh')
     for (const name of ['NODE_OPTIONS', 'ACCOUNT_2_EMAIL', 'HTTPS_PROXY']) assert.equal(env[name], undefined)
+    assert.equal(env.MRS_BROWSER_EXECUTABLE, '')
+    assert.equal(env.MRS_BROWSER_NAME, '')
+    assert.equal(env.PLAYWRIGHT_BROWSERS_PATH, undefined)
     assert.equal(env.CONFIG_TASKS_ONLY, 'true')
     assert.equal(env.CONFIG_WORKER_DESKTOP_SEARCH, 'false')
     assert.equal(env.CONFIG_WORKER_MOBILE_SEARCH, 'false')
@@ -76,8 +85,11 @@ test('backend inherits OS essentials but never developer credentials or injectio
         resourceDirectory: '/resources',
         settings: { ...defaults, mode: 'tasks-search' },
         token: 'fresh',
+        browser: { id: 'edge', executablePath: '/installed/msedge.exe' },
         source: {}
     })
+    assert.equal(searches.MRS_BROWSER_NAME, 'edge')
+    assert.equal(searches.MRS_BROWSER_EXECUTABLE, '/installed/msedge.exe')
     assert.equal(searches.CONFIG_TASKS_ONLY, 'true')
     assert.equal(searches.CONFIG_WORKER_DESKTOP_SEARCH, 'true')
     assert.equal(searches.CONFIG_WORKER_MOBILE_SEARCH, 'true')
