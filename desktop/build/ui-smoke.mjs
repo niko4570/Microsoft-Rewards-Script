@@ -98,7 +98,8 @@ try {
     }
     let page = await findPage()
     await page.getByRole('heading', { name: '任务总览', exact: true }).waitFor({ timeout: 45000 })
-    await page.getByText('本地服务已连接').waitFor()
+    await page.getByText('任务后台按需启动').waitFor()
+    assert.equal(await mainWorld(page, async () => (await window.desktop.snapshot()).backendReady), false)
     assert.equal(await mainWorld(page, () => typeof window.require), 'undefined')
     assert.equal(await mainWorld(page, () => typeof window.process), 'undefined')
     assert.equal(await page.getByLabel('账号邮箱').count(), 0)
@@ -159,7 +160,7 @@ try {
     assert.equal(second.exitCode, 0)
     browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { timeout: 15000 })
     page = await findPage()
-    await page.getByText('本地服务已连接').waitFor()
+    await page.getByText('任务后台按需启动').waitFor()
     assert.equal((await mainWorld(page, () => window.desktop.snapshot())).settings.email, 'smoke@example.com')
     const exited = once(child, 'exit')
     await mainWorld(page, () => {

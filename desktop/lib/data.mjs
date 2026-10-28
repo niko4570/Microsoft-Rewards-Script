@@ -122,7 +122,15 @@ export function readReports(directory) {
         .slice(0, 20)
         .map(name => {
             try {
-                return JSON.parse(fs.readFileSync(path.join(directory, name), 'utf8'))
+                const report = JSON.parse(fs.readFileSync(path.join(directory, name), 'utf8'))
+                if (
+                    !report ||
+                    typeof report !== 'object' ||
+                    !Array.isArray(report.tasks) ||
+                    (report.account !== undefined && typeof report.account !== 'string')
+                )
+                    throw new Error('invalid report')
+                return report
             } catch {
                 return { tasks: [], startedAt: '', error: '报告文件损坏，无法读取' }
             }

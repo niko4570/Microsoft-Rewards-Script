@@ -33,10 +33,11 @@ export interface Snapshot {
         filePath: string | null
     }
     settings: Settings
-    automation: { nextResetAt: string | null; message: string }
+    automation: { date: string; completedToday: boolean; message: string }
     backendReady: boolean
     state: string
     error: string | null
+    review?: string | null
     interruption?: string | null
     lastExit: { code: number | null; signal?: string | null; error?: string } | null
     sessions: Array<{ platform: string; hasStorageState: boolean; updatedAt: string | null }>

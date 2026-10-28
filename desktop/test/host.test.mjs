@@ -51,8 +51,8 @@ test('Tauri Node host uses private pipes, persists settings and closes its real 
         })
     }
     const initial = await request('snapshot')
-    assert.equal(initial.backendReady, true)
-    assert.equal(initial.state, 'idle')
+    assert.equal(initial.backendReady, false)
+    assert.equal(initial.state, 'sleeping')
     assert.deepEqual(
         native.map(message => [message.action, message.value]),
         [['syncAutoStart', false]]

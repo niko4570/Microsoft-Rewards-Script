@@ -75,3 +75,18 @@ test('browser detection and fixed download actions cross the private bridge with
     assert.deepEqual(requests, [['downloadChrome'], ['downloadEdge']])
     await assert.rejects(host.invoke('downloadChrome', 'https://other.example'), /不接受参数/)
 })
+
+test('closing the UI suspends snapshots while reopening preserves the scheduler attempts', async () => {
+    const service = new EventEmitter()
+    let resets = 0
+    service.scheduler = { reset: () => resets++, tick: () => {} }
+    service.snapshot = async () => ({ state: 'sleeping' })
+    const host = new DesktopHost({ service, native: () => {}, version: 'test' })
+    await host.invoke('snapshot')
+    assert.equal(host.uiVisible, true)
+    await host.invoke('suspend')
+    assert.equal(host.uiVisible, false)
+    await host.invoke('resume')
+    assert.equal(host.uiVisible, true)
+    assert.equal(resets, 1)
+})

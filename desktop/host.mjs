@@ -44,12 +44,15 @@ const ready = (async () => {
 ready.catch(error => send({ event: 'desktop:error', value: error.message }))
 
 const timer = setInterval(() => {
-    if (!closing) void ready.then(() => host.refresh()).catch(() => {})
+    if (!closing && host.uiVisible) void ready.then(() => host.refresh()).catch(() => {})
 }, 1500)
 let lastWake = Date.now()
 const wakeTimer = setInterval(() => {
     const now = Date.now()
-    if (now - lastWake > 30000 || now < lastWake) service.scheduler.reset()
+    if (now - lastWake > 30000 || now < lastWake) {
+        service.scheduler.reset()
+        void service.scheduler.tick().catch(error => service.log(error.message))
+    }
     lastWake = now
 }, 10000)
 

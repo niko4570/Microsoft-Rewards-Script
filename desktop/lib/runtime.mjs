@@ -5,6 +5,7 @@ export function backendEnvironment({
     resourceDirectory,
     settings,
     token,
+    runId,
     browser,
     source = process.env
 }) {
@@ -60,7 +61,7 @@ export function backendEnvironment({
         CONFIG_WORKER_MOBILE_SEARCH: String(settings.mode === 'tasks-search'),
         CONFIG_WORKER_BONUS_SEARCHES: 'false',
         CONFIG_AUTO_SYNC: 'false',
-        TZ: 'Asia/Shanghai',
+        MRS_RUN_ID: runId || '',
         NO_COLOR: '1'
     }
 }

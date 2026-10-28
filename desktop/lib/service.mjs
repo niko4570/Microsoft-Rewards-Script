@@ -2,6 +2,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
+import { randomUUID } from 'node:crypto'
+import { listStoredSessions } from '../../scripts/api/sessionStore.js'
+import { DailyState, localDate, matchingReport, reportComplete } from './dailyState.mjs'
 import { Backend, killTree } from './backend.mjs'
 import { atomicJson, initializeData, validateSettings, DailyLog, readReports, redact } from './data.mjs'
 import { backendEnvironment } from './runtime.mjs'
@@ -17,6 +20,8 @@ export class DesktopService extends EventEmitter {
         version,
         backendFactory = options => new Backend(options),
         resetScanner,
+        sessionReader,
+        now = () => new Date(),
         browserDetector = detectBrowsers,
         setAutoStart = () => {}
     }) {
@@ -34,14 +39,16 @@ export class DesktopService extends EventEmitter {
                 this.balance = saved
         } catch {}
         this.resetScanner = resetScanner
+        this.now = now
+        this.sessionReader =
+            sessionReader || (() => listStoredSessions(resourceDirectory, 'sessions', dataDirectory).sessions)
+        this.lastStatus = { state: 'idle', lastExit: null }
+        this.daily = new DailyState(path.join(dataDirectory, 'daily-state.json'))
         this.error = null
         this.operation = null
         this.loginChild = null
         this.stopping = false
-        this.runState = new RunState(
-            path.join(dataDirectory, 'run-state.json'),
-            readReports(path.join(dataDirectory, 'reports'))
-        )
+        this.runState = new RunState(path.join(dataDirectory, 'run-state.json'))
         this.backend = backendFactory({
             executable,
             resourceDirectory,
@@ -54,45 +61,112 @@ export class DesktopService extends EventEmitter {
             this.runState.interrupt()
             this.error = message
             this.log(message)
+            void this.finishRun().catch(error => this.log(error.message))
         })
-        this.backend.on('status', status => {
-            this.runState.observe(status)
-            this.emit('change')
-        })
+        this.backend.on('status', status => this.observeStatus(status))
         this.scheduler = new DesktopScheduler({
-            file: path.join(dataDirectory, 'schedule-state.json'),
             settings: () => this.settings,
-            scan: () => this.scanReset(),
+            daily: this.daily,
             trigger: () => this.startRun('自动'),
-            interrupted: (account, reset) => this.runState.blocksCycle(account, reset),
+            available: () =>
+                !this.stopping &&
+                !this.operation &&
+                !this.loginChild &&
+                !this.finishing &&
+                this.runState.value?.status !== 'running' &&
+                !this.runState.error,
+            now,
             log: line => this.log(line)
         })
+        this.review = null
+        // Recover a crash between report verification and saving the daily flag.
+        if (this.runState.value?.runId && this.runState.value.status !== 'running') this.recordOutcome()
     }
+    reports() {
+        return readReports(path.join(this.dataDirectory, 'reports'))
+    }
+    sessions() {
+        return this.sessionReader().filter(session => session.email.toLowerCase() === this.settings.email.toLowerCase())
+    }
+    recordOutcome() {
+        const run = this.runState.value
+        if (!run?.runId || !run.date || !run.mode) return
+        const report = matchingReport(run, this.reports())
+        const complete = run.status === 'finished' && reportComplete(report)
+        // Never overwrite a corrupt daily file automatically during recovery.
+        if (!this.daily.error) this.daily.record(run, complete)
+        this.scheduler.message = complete
+            ? '今日任务已完成；等待系统日期跨日'
+            : '今日任务尚未完成，请查看运行结果并导出诊断'
+        this.review = complete
+            ? null
+            : report
+              ? '仍有任务未完成或未确认，请查看运行结果并导出诊断，检查失败步骤。'
+              : '本次运行缺少有效报告，无法确认完成；请导出诊断并检查日志。'
+    }
+    observeStatus(status) {
+        this.lastStatus = status
+        if (
+            this.runState.value?.status === 'running' &&
+            status.state === 'idle' &&
+            status.lastExit &&
+            Date.parse(status.lastExit.at) >= Date.parse(this.runState.value.startedAt)
+        ) {
+            this.runState.observe(status)
+            void this.finishRun().catch(error => {
+                this.error = error.message
+                this.log(error.message)
+            })
+        }
+        this.emit('change')
+    }
+    finishRun() {
+        if (this.finishing) return this.finishing
+        const operation = this.activeOperation
+        this.finishing = (async () => {
+            // Do not close the API before the /start or /stop response is consumed.
+            await operation
+            try {
+                this.recordOutcome()
+            } finally {
+                await this.backend.close()
+                this.lastStatus = { ...this.lastStatus, state: 'idle' }
+                this.emit('change')
+            }
+        })().finally(() => {
+            this.finishing = null
+        })
+        return this.finishing
+    }
+    async ensureBackend() {
+        if (this.backend.endpoint) return
+        if (!this.backendStarting) {
+            this.backendStarting = this.backend.start().finally(() => {
+                this.backendStarting = null
+            })
+        }
+        await this.backendStarting
+    }
+
     log(message) {
         this.logger.write(message)
         this.emit('change')
     }
     async start() {
-        try {
-            await this.backend.start()
-            this.error = null
-            this.log('后台已就绪；开启自动运行后按 Rewards 重置时间检查任务')
-        } catch (error) {
-            this.error = error.message
-            this.log(error.message)
-        }
+        this.log('桌面服务已就绪；任务后台按需启动，自动运行使用电脑系统日期')
         this.timer = setInterval(() => {
             void this.scheduler.tick().catch(error => {
                 this.error = error.message
                 this.log(error.message)
             })
-        }, 10000)
+        }, 60000)
         this.pruneTimer = setInterval(() => this.logger.cleanup(), 86400000)
         void this.scheduler.tick()
     }
     async exclusive(name, action) {
         if (this.stopping) throw new Error('应用正在退出')
-        if (this.operation || this.loginChild) throw new Error('登录或其他操作正在进行，请先完成或取消')
+        if (this.operation || this.loginChild || this.finishing)
+            throw new Error('登录或其他操作正在进行，请先完成或取消')
         this.operation = name
         let finished
         this.activeOperation = new Promise(resolve => {
@@ -109,8 +183,9 @@ export class DesktopService extends EventEmitter {
         }
     }
     async ensureIdle() {
+        if (this.runState.value?.status === 'running' || this.finishing) throw new Error('任务正在运行，请先停止')
+        if (!this.backend.endpoint) return
         const status = await this.backend.request('/status')
-        this.runState.observe(status)
         if (status.state !== 'idle') throw new Error('任务正在运行，请先停止')
     }
     async detectBrowser() {
@@ -118,38 +193,43 @@ export class DesktopService extends EventEmitter {
         this.emit('change')
         return this.browser
     }
-    async requireBrowser(forTask = false) {
+    async requireBrowser() {
         await this.detectBrowser()
         if (!this.browser.selected) throw new Error(this.browser.error)
-        // API children inherit their browser at startup. Refresh that environment
-        // only while idle, before submitting a task, never during a running task.
-        if (forTask && this.backend.env?.MRS_BROWSER_EXECUTABLE !== this.browser.selected.executablePath) {
-            await this.backend.close()
-            await this.backend.start()
-        }
         this.log(`使用 ${this.browser.selected.name}`)
     }
     async startRun(source = '手动') {
         let submitted = false
+        let ownsBackend = false
         try {
             return await this.exclusive('starting', async () => {
                 await this.ensureIdle()
                 if (!this.settings.email) throw new Error('请先设置账号并登录')
-                const { sessions } = await this.backend.request('/sessions')
+                const sessions = this.sessions()
                 const stored = sessions.filter(
                     session =>
                         session.email.toLowerCase() === this.settings.email.toLowerCase() && session.hasStorageState
                 )
                 if (!['mobile', 'desktop'].every(platform => stored.some(session => session.platform === platform)))
                     throw new Error('请先完成手机和桌面会话登录')
-                await this.requireBrowser(true)
-                this.runState.start(
-                    this.settings.email,
-                    this.scheduler.state.account === this.settings.email.toLowerCase()
-                        ? this.scheduler.state.nextResetAt
-                        : null
-                )
+                const runId = randomUUID()
+                await this.requireBrowser()
+                ownsBackend = true
+                // Each run gets a fresh environment and correlation ID.
+                await this.backend.close()
+                this.backend.runId = runId
+                await this.ensureBackend()
+                this.runState.start(this.settings.email, {
+                    date: localDate(this.now()),
+                    mode: this.settings.mode,
+                    runId
+                })
+                this.daily.record(this.runState.value, false)
+                this.scheduler.markAttempt(this.runState.value)
+                this.review = null
+                this.error = null
                 submitted = true
+                this.lastStatus = { state: 'running', lastExit: null }
                 const result = await this.backend.request('/start', 'POST', { accountIndex: 1 })
                 this.scheduler.message = `${source}任务已启动；完成情况请查看运行结果`
                 this.log(`${source}任务已启动`)
@@ -159,6 +239,11 @@ export class DesktopService extends EventEmitter {
             // Once /start was sent, an uncertain response must not cause a
             // second automatic run after a timeout or lost connection.
             error.safeToRetry = !submitted
+            if (ownsBackend) {
+                this.runState.interrupt()
+                if (submitted) await this.finishRun()
+                else await this.backend.close()
+            }
             throw error
         }
     }
@@ -188,7 +273,7 @@ export class DesktopService extends EventEmitter {
     async scanReset(balanceOnly = false) {
         return this.exclusive(balanceOnly ? 'balance' : 'scanning', async () => {
             await this.ensureIdle()
-            const { sessions } = await this.backend.request('/sessions')
+            const sessions = this.sessions()
             if (
                 !(balanceOnly ? ['desktop'] : ['mobile', 'desktop']).every(platform =>
                     sessions.some(
@@ -257,9 +342,13 @@ export class DesktopService extends EventEmitter {
     }
     async stopRun() {
         if (this.loginChild) return this.cancelLogin()
-        this.runState.observe(await this.backend.request('/status'))
-        this.runState.interrupt()
-        return this.backend.request('/stop', 'POST', {})
+        return this.exclusive('stopping', async () => {
+            if (!this.backend.endpoint) return
+            this.runState.interrupt()
+            const result = await this.backend.request('/stop', 'POST', {})
+            void this.finishRun().catch(error => this.log(error.message))
+            return result
+        })
     }
     async saveSettings(value) {
         const next = validateSettings(value)
@@ -287,7 +376,6 @@ export class DesktopService extends EventEmitter {
             this.scheduler.reset()
             if (next.email !== previous.email || next.mode !== previous.mode || next.browser !== previous.browser) {
                 await this.backend.close()
-                await this.backend.start()
             }
             this.error = null
             this.log('设置已保存')
@@ -384,29 +472,25 @@ export class DesktopService extends EventEmitter {
         return this.exclusive('restarting', async () => {
             if (this.backend.endpoint) await this.ensureIdle()
             await this.backend.close()
-            await this.backend.start()
+            await this.ensureBackend()
+            await this.backend.request('/health')
+            await this.backend.close()
             this.error = null
-            this.log('后台已重启')
+            this.log('后台检查完成，已回到按需启动状态')
         })
     }
     async snapshot() {
-        let status = null
+        const status = this.lastStatus
         let sessions = []
-        if (this.backend.endpoint) {
-            try {
-                const results = await Promise.all([this.backend.request('/status'), this.backend.request('/sessions')])
-                status = results[0]
-                this.runState.observe(status)
-                sessions = results[1].sessions.filter(
-                    session => session.email.toLowerCase() === this.settings.email.toLowerCase()
-                )
-            } catch (error) {
-                this.error = error.message
-            }
+        try {
+            sessions = this.sessions()
+        } catch (error) {
+            this.error = error.message
         }
-        const reports = readReports(path.join(this.dataDirectory, 'reports')).filter(
+        const reports = this.reports().filter(
             report => !report.account || report.account.toLowerCase() === this.settings.email.toLowerCase()
         )
+        const date = localDate(this.now())
         let balance = this.balance?.account === this.settings.email.toLowerCase() ? this.balance : null
         for (const report of reports) {
             const value = report.finalPoints ?? report.initialPoints
@@ -425,15 +509,18 @@ export class DesktopService extends EventEmitter {
             settings: this.settings,
             browser: this.browser,
             automation: {
-                nextResetAt:
-                    this.scheduler.state.account === this.settings.email.toLowerCase()
-                        ? this.scheduler.state.nextResetAt || null
-                        : null,
+                date,
+                completedToday: this.daily.completed(this.settings.email, this.settings.mode, date),
                 message: this.scheduler.message
             },
             backendReady: Boolean(this.backend.endpoint),
-            state: this.stopping ? 'exiting' : this.loginChild ? 'login' : this.operation || status?.state || 'offline',
-            error: this.error ? redact(this.error) : null,
+            state: this.stopping
+                ? 'exiting'
+                : this.loginChild
+                  ? 'login'
+                  : this.operation || (this.finishing ? 'stopping' : this.backend.endpoint ? status.state : 'sleeping'),
+            error: redact(this.error || this.daily.error || this.runState.error || '') || null,
+            review: this.runState.value?.account === this.settings.email.toLowerCase() ? this.review : null,
             interruption: this.runState.isInterrupted(this.settings.email) ? interruptionMessage : null,
             lastExit: status?.lastExit || null,
             sessions,
@@ -443,6 +530,9 @@ export class DesktopService extends EventEmitter {
     diagnosticText() {
         return (
             `Rewards Desktop ${this.version}\nPlatform: ${process.platform} ${process.arch}\nNode: ${process.version}\n` +
+            `Local date: ${localDate(this.now())}\nTimezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}\n` +
+            `Daily state: ${redact(JSON.stringify(this.daily.value))}\nRun: ${redact(JSON.stringify(this.runState.value))}\n` +
+            `Reports: ${redact(JSON.stringify(this.reports().slice(0, 3)))}\n` +
             `Schedule: ${JSON.stringify(this.settings.schedule)}\nError: ${redact(this.error || 'none')}\n` +
             this.logger.exportText()
         )
@@ -463,7 +553,8 @@ export class DesktopService extends EventEmitter {
                 'desktop.json.bak',
                 'schedule-state.json',
                 'run-state.json',
-                'balance.json'
+                'balance.json',
+                'daily-state.json'
             ]) {
                 fs.rmSync(path.join(this.dataDirectory, name), { force: true, recursive: true })
             }
@@ -473,17 +564,24 @@ export class DesktopService extends EventEmitter {
             )
             this.browser = this.browserDetector(this.settings.browser)
             this.logger = new DailyLog(path.join(this.dataDirectory, 'logs'))
-            this.scheduler.state = { attempts: [] }
+            this.daily.clear()
+            this.scheduler.attempts.clear()
+            this.review = null
+            this.runState.error = null
+            this.lastStatus = { state: 'idle', lastExit: null }
             this.runState.value = null
             this.balance = null
             this.balanceError = null
             this.scheduler.reset()
-            await this.backend.start()
             this.error = null
             this.log('本地数据已清除，请重新设置账号')
         })
     }
     async close() {
+        if (!this.closed) this.closed = this.closeService()
+        return this.closed
+    }
+    async closeService() {
         this.stopping = true
         clearInterval(this.timer)
         clearInterval(this.pruneTimer)
@@ -498,6 +596,11 @@ export class DesktopService extends EventEmitter {
             }
         }
         this.runState.interrupt()
-        await this.backend.close()
+        if (this.finishing) await this.finishing
+        try {
+            this.recordOutcome()
+        } finally {
+            await this.backend.close()
+        }
     }
 }

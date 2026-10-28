@@ -11,6 +11,7 @@ export interface TaskResult {
 }
 
 export interface TaskReport {
+    runId?: string
     nextStreakResetAt?: string | null
     account: string
     startedAt: string

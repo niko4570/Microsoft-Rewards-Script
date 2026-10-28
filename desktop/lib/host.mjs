@@ -7,8 +7,12 @@ export class DesktopHost {
     constructor({ service, native, version, publish = () => {}, updater }) {
         Object.assign(this, { service, native, publish })
         this.updater = updater || new DesktopUpdater({ version, onChange: () => this.changed() })
+        this.uiVisible = false
         this.actions = {
-            snapshot: () => this.snapshot(),
+            snapshot: () => {
+                this.uiVisible = true
+                return this.snapshot()
+            },
             detectBrowser: () => service.detectBrowser(),
             downloadChrome: () => this.native('downloadChrome'),
             downloadEdge: () => this.native('downloadEdge'),
@@ -40,7 +44,11 @@ export class DesktopHost {
                 await service.clearData()
                 return true
             },
+            suspend: () => {
+                this.uiVisible = false
+            },
             resume: () => {
+                this.uiVisible = true
                 service.scheduler.reset()
                 return service.scheduler.tick()
             }
