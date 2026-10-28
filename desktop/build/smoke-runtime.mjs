@@ -51,6 +51,7 @@ try {
         (async () => {
             for (const selected of ${JSON.stringify(browsers)}) {
             for (const headless of [false, true]) {
+                console.log(selected.name, 'headless=' + headless, 'starting');
                 const options = requireRuntime('./dist/browser/BrowserLaunch.js').browserLaunchOptions({ MRS_DATA_DIR: ${JSON.stringify(data)}, MRS_BROWSER_EXECUTABLE: selected.executablePath, MRS_BROWSER_NAME: selected.id });
                 const browser = await chromium.launch({ ...options, headless });
                 try {
@@ -61,6 +62,7 @@ try {
                     console.log(selected.name, browser.version(), 'headless=' + headless, 'PASS');
                 } finally {
                     await browser.close();
+                    console.log(selected.name, 'headless=' + headless, 'closed');
                 }
             }
             }
@@ -76,7 +78,9 @@ try {
             PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
         },
         stdio: 'inherit',
-        timeout: 60000
+        // Four sequential browser lifecycles share this deadline, including
+        // Windows process cleanup after each otherwise successful probe.
+        timeout: 180000
     })
     if (result.error) throw result.error
     if (result.status !== 0) throw new Error('Windows 运行依赖检查失败')
