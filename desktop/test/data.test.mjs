@@ -77,6 +77,16 @@ test('backend inherits OS essentials but never developer credentials or injectio
     assert.equal(env.MRS_BROWSER_EXECUTABLE, '')
     assert.equal(env.MRS_BROWSER_NAME, '')
     assert.equal(env.PLAYWRIGHT_BROWSERS_PATH, undefined)
+    assert.equal(env.TZ, undefined)
+    assert.equal(
+        backendEnvironment({
+            dataDirectory: '/data',
+            resourceDirectory: '/resources',
+            settings: defaults,
+            runId: 'run-123'
+        }).MRS_RUN_ID,
+        'run-123'
+    )
     assert.equal(env.CONFIG_TASKS_ONLY, 'true')
     assert.equal(env.CONFIG_WORKER_DESKTOP_SEARCH, 'false')
     assert.equal(env.CONFIG_WORKER_MOBILE_SEARCH, 'false')

@@ -6,6 +6,7 @@ import './styles.css'
 
 const stateNames: Record<string, string> = {
     idle: '等待运行',
+    sleeping: '按需启动',
     running: '任务运行中',
     starting: '正在启动',
     stopping: '正在停止',
@@ -113,7 +114,7 @@ function App() {
                 <p>{message || '正在连接桌面服务…'}</p>
             </main>
         )
-    const idle = snapshot.state === 'idle'
+    const idle = ['idle', 'sleeping'].includes(snapshot.state)
     const configured = Boolean(snapshot.settings.email)
     const loggedIn = ['mobile', 'desktop'].every(platform =>
         snapshot.sessions.some(session => session.platform === platform && session.hasStorageState)
@@ -142,7 +143,11 @@ function App() {
                 </nav>
                 <div className="sidebar-bottom">
                     <span className={snapshot.backendReady ? 'dot online' : 'dot'} />
-                    {snapshot.backendReady ? '本地服务已连接' : '本地服务未连接'}
+                    {snapshot.backendReady
+                        ? '本地服务已连接'
+                        : snapshot.state === 'offline'
+                          ? '本地服务未连接'
+                          : '任务后台按需启动'}
                     <small>v{snapshot.version} · 私人测试版</small>
                 </div>
             </aside>
@@ -157,6 +162,15 @@ function App() {
                 {(message || snapshot.error) && (
                     <div role="status" className={failed || snapshot.error ? 'notice error' : 'notice'}>
                         {message || snapshot.error}
+                    </div>
+                )}
+                {snapshot.review && (
+                    <div role="status" className="notice">
+                        <p>{snapshot.review}</p>
+                        <button onClick={() => setTab('results')}>查看运行结果</button>
+                        <button disabled={busy} onClick={() => void act(() => window.desktop.exportDiagnostics())}>
+                            导出诊断
+                        </button>
                     </div>
                 )}
                 {snapshot.interruption && (
@@ -279,15 +293,17 @@ function App() {
                                 <p className="label">自动运行</p>
                                 <h3>
                                     {snapshot.settings.schedule.enabled
-                                        ? formatTime(snapshot.automation.nextResetAt)
+                                        ? snapshot.automation.completedToday
+                                            ? '今日已完成'
+                                            : '今日尚未完成'
                                         : '尚未开启'}
                                 </h3>
                                 <p>
                                     {snapshot.settings.schedule.enabled
                                         ? snapshot.automation.message
-                                        : '开启后自动检查每日任务与重置时间'}
+                                        : '开启后按电脑系统日期每天自动运行'}
                                 </p>
-                                <p className="muted">下一次服务端重置 · 应用需在托盘运行</p>
+                                <p className="muted">{snapshot.automation.date} · 电脑系统日期 · 托盘常驻可跨日运行</p>
                                 <button onClick={() => setTab('settings')}>自动运行设置</button>
                             </section>
                             <section className="card">
@@ -432,7 +448,7 @@ function App() {
                                         })
                                     }
                                 />
-                                按 Rewards 重置时间自动运行
+                                按电脑系统日期每天自动运行
                             </label>
                             <label className="check">
                                 <input
@@ -443,9 +459,9 @@ function App() {
                                 登录 Windows 后启动到托盘
                             </label>
                             <p className="muted">
-                                打开应用、登录完成或休眠恢复后自动检查连胜和积分卡片。尚未自动运行的周期每 5
-                                分钟检查新增任务； 每周期最多自动启动一次，运行后等待服务端重置。读取失败 5
-                                分钟后重试，任务失败可手动重试。
+                                打开应用时，今天未完成就自动运行；常驻或休眠恢复后按系统日期检查，跨日后约一分钟内运行。
+                                当次失败后不会连续重跑，可手动开始任务，或完全退出并重新启动应用重试。
+                                手动运行不受今日完成状态限制；任务后台仅在需要时启动。
                             </p>
                             <button className="primary" type="submit" disabled={busy || !idle}>
                                 保存设置

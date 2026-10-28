@@ -46,23 +46,28 @@ GitHub 的 **Code → Download ZIP**、**Source code (zip/tar.gz)** 和 `rewards
 
 ## Automatic runs
 
-Automatic runs and Windows startup are disabled by default. Enable them in app
-settings as needed. The app must remain running, including in the tray.
+当前 0.2.0 源码使用电脑系统的本地日期和时间，自动运行与开机启动默认关闭。
+开启后，打开应用时若当天尚未完成就执行一次；保持托盘运行时，每分钟只在本地检查日期，
+跨日后首次检查执行当天任务。休眠恢复后重新检查，不补跑历史日期。
 
-On startup, after login, and after resume, the app reads the saved session's
-current task state and next Rewards reset time. It runs eligible unfinished tasks
-once per account and server reset cycle. After a reset, it waits one minute before
-checking again. An unrun cycle with no pending tasks is checked again every five
-minutes so newly available point cards are not missed.
+每天按账号与运行模式保存完成记录，无需在零点主动清零。任务跨日结束仍归属启动当天；
+切换账号或运行模式使用各自的记录。修改系统日期或时区会改变“今天”的判断，程序不跟随代理地区推断重置时间。
 
-The cycle reservation is saved before launch. Restarting the app or losing a start
-response does not create another automatic full run. Busy operations defer checks;
-missing reset data, network failures, and expired sessions are checked again after
-five minutes. Failed full runs can be retried manually. Sleep and exit pause all
-work; resume checks only the current cycle and does not replay missed days.
+只有本次任务正常退出、有效报告非空且所有项目均完成或正常跳过，才记为当天完成。
+失败、中断、需要手动处理、未确认或报告缺失均不算完成。当天失败后，本次应用进程不会连续重跑；
+可以点击 **开始任务**，或从托盘完全退出再打开应用重试。关闭窗口再从托盘打开不算重启。
+手动运行不受当天完成状态限制，但不能同时启动多个任务。
 
-Closing the window leaves the app in the tray. Exiting the app stops its backend,
-tasks, and inspection processes.
+启动与空闲时仅读取本地状态、会话元数据、报告和余额缓存，不独立扫描重置时间。
+Node Host 保持运行；任务 API 在运行任务时启动，结束核验后退出。浏览器登录和手动余额查询使用独立子进程，结束后回收。
+后台休眠时界面显示“按需启动”，不是连接故障。**重启后台**执行启动检查后回到休眠。
+任务内部的服务端状态核验和签到补偿机制继续保留。
+
+未完成时查看具体运行结果，再点击 **导出诊断**；日志有助于区分网络、登录、服务端状态和程序步骤问题。
+记录损坏会暂停自动运行并提示导出诊断；手动运行时保留损坏原件后重建记录。
+首次升级不根据旧 reset 记录推断当天完成，可能进行一次自动任务；旧会话、报告和设置保留。
+
+以上为本地未发布改动，验证结果以本次交付说明为准；旧版人工验收不自动覆盖此调度与生命周期变更。
 
 ## App check-in recovery (0.1.8 and later)
 
@@ -117,13 +122,15 @@ Installed and portable builds use `%APPDATA%\Rewards Desktop` by default.
 | Browser sessions and fingerprints                       | `sessions/`                     |
 | Task reports                                            | `reports/`                      |
 | Check-in compensation reservations                      | `reports/app-checkin-recovery/` |
-| Automatic cycle reservations                            | `schedule-state.json`           |
+| Daily completion by account and mode                    | `daily-state.json`              |
+| Latest run and interruption state                       | `run-state.json`                |
 | Redacted logs, retained for 30 days                     | `logs/`                         |
 
 The desktop has no live-log page and does not stream logs to the UI. Check run
 results first, then use settings to open the data folder (`logs/`) or export
 diagnostics. Diagnostics contain
-runtime information and the latest seven days of redacted logs, excluding config,
+runtime information, system date/timezone, redacted daily/run state and recent report summaries,
+and the latest seven days of redacted logs, excluding config,
 session databases, and screenshots. Review exports before sharing. Local session
 databases are not additionally encrypted; do not publish the data directory.
 
@@ -213,7 +220,7 @@ Closing the window destroys the WebView; the tray and Node scheduler remain.
 Opening the tray recreates the UI and reads a fresh snapshot. Quit stops the Node
 service, API, login/inspection/task processes. On Windows, a kill-on-close Job
 Object also covers abrupt shell termination. A clock-gap check resets scheduling
-after sleep; server reset reservations remain in the existing scheduler state.
+after sleep; daily completion is persisted by local system date, account and mode. The task API sleeps when idle.
 
 Data remains in `%APPDATA%\Rewards Desktop`, including `desktop.json`, sessions,
 reports and `schedule-state.json`. The WebView's own cache is separate. For the
@@ -365,4 +372,4 @@ PR 的格式检查只检查变更文件，并入 CI，不再自动提交格式�
 
 两种模式都保留当前任务页面读取、完成核验与运行报告。普通搜索读取当前页面的 `pointsCounters`，不依赖旧版账户接口。未读取到额度时报告失败，不把缺失数据当作已完成。普通搜索仍遵守现有的次数上限与无积分增长停止规则，微软是否计分以页面进度为准。
 
-升级后默认保留任务模式。切换模式不会清除本周期已自动运行的记录；若今天已经自动运行，切换后可手动开始任务，下个周期按保存的模式自动运行。
+升级后默认保留任务模式。当前源码按账号、系统日期和模式分别记录完成情况；切换模式后，旧模式的完成记录不会阻止新模式自动运行，也可随时手动开始任务。

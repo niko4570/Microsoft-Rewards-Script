@@ -77,3 +77,11 @@ jobs:
               run: npm run test:schedule
             - name: Test desktop services and updater
               run: npm run desktop:test
+            - name: Verify today and tomorrow scheduling in multiple timezones
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  for zone in Asia/Singapore America/Los_Angeles UTC; do
+                    echo "Verifying daily rollover in $zone"
+                    TZ="$zone" node --test --test-isolation=none --test-concurrency=1 desktop/test/scheduler.test.mjs desktop/test/runState.test.mjs desktop/test/service.test.mjs
+                  done

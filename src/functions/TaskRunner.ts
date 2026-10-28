@@ -32,7 +32,14 @@ export class TaskRunner {
             ? path.join(process.env.MRS_DATA_DIR, 'reports')
             : 'reports'
     ) {
-        this.report = { account, startedAt: new Date().toISOString(), tasks: [], streaks: [], stamps: null }
+        this.report = {
+            runId: process.env.MRS_RUN_ID || undefined,
+            account,
+            startedAt: new Date().toISOString(),
+            tasks: [],
+            streaks: [],
+            stamps: null
+        }
     }
 
     private add(result: TaskResult): TaskResult {

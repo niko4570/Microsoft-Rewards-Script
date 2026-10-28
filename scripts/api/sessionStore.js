@@ -54,8 +54,11 @@ function toSession(row) {
     }
 }
 
-export function listStoredSessions(projectRoot, sessionPath) {
-    const { dbPath, exists } = resolveSessionDb(projectRoot, sessionPath)
+export function listStoredSessions(projectRoot, sessionPath, dataDirectory) {
+    const explicitPath = dataDirectory ? path.join(dataDirectory, sessionPath, 'sessions.db') : null
+    const { dbPath, exists } = explicitPath
+        ? { dbPath: explicitPath, exists: fs.existsSync(explicitPath) }
+        : resolveSessionDb(projectRoot, sessionPath)
     if (!exists) {
         return { databaseExists: false, sessions: [], count: 0, accounts: 0 }
     }

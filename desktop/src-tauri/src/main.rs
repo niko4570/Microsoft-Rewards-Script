@@ -24,10 +24,20 @@ struct Desktop {
     quitting: AtomicBool,
 }
 
+fn notify_host(app: &tauri::AppHandle, action: &'static str) {
+    if let Some(state) = app.try_state::<Desktop>() {
+        let host = state.host.clone();
+        std::thread::spawn(move || {
+            let _ = host.request(action, Value::Null);
+        });
+    }
+}
+
 fn show_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window("main") {
         window.unminimize()?;
         window.show()?;
+        notify_host(app, "resume");
         return window.set_focus();
     }
     let data = app.state::<Desktop>().data_directory.join("webview");
@@ -46,6 +56,7 @@ fn show_window(app: &tauri::AppHandle) -> tauri::Result<()> {
                         && url.host_str() == Some("tauri.localhost")))
         })
         .build()?;
+    notify_host(app, "resume");
     Ok(())
 }
 
@@ -122,6 +133,11 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![desktop_invoke])
+        .on_window_event(|window, event| {
+            if window.label() == "main" && matches!(event, tauri::WindowEvent::Destroyed) {
+                notify_host(window.app_handle(), "suspend");
+            }
+        })
         .setup(|app| {
             let custom = std::env::args()
                 .find_map(|arg| arg.strip_prefix("--user-data-dir=").map(PathBuf::from));

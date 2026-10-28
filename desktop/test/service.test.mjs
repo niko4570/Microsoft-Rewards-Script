@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
 import { fileURLToPath } from 'node:url'
-import { createRequire } from 'node:module'
+import { localDate } from '../lib/dailyState.mjs'
 import { DesktopService } from '../lib/service.mjs'
 
 const availableBrowser = preference => {
@@ -18,12 +18,14 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 class FakeBackend extends EventEmitter {
     constructor() {
         super()
-        this.endpoint = 'local'
+        this.endpoint = null
         this.state = 'idle'
         this.starts = 0
+        this.launches = 0
         this.sessions = []
     }
     async start() {
+        this.launches++
         this.endpoint = 'local'
     }
     async close() {
@@ -31,6 +33,8 @@ class FakeBackend extends EventEmitter {
         this.state = 'idle'
     }
     async request(route) {
+        if (!this.endpoint) throw new Error('backend asleep')
+        if (route === '/health') return { state: this.state }
         if (route === '/status') return { state: this.state }
         if (route === '/sessions') return { sessions: this.sessions }
         if (route === '/start') {
@@ -45,9 +49,11 @@ class FakeBackend extends EventEmitter {
         throw new Error(`unexpected route: ${route}`)
     }
 }
-function fixture(t, savedSettings) {
+function fixture(t, savedSettings, initialRunState) {
     const dataDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'desktop-service-'))
     if (savedSettings) fs.writeFileSync(path.join(dataDirectory, 'desktop.json'), JSON.stringify(savedSettings))
+    if (initialRunState !== undefined)
+        fs.writeFileSync(path.join(dataDirectory, 'run-state.json'), JSON.stringify(initialRunState))
     const backend = new FakeBackend()
     const service = new DesktopService({
         executable: process.execPath,
@@ -55,6 +61,7 @@ function fixture(t, savedSettings) {
         dataDirectory,
         version: '0.1.0',
         browserDetector: availableBrowser,
+        sessionReader: () => backend.sessions,
         backendFactory: () => backend
     })
     t.after(async () => {
@@ -64,7 +71,7 @@ function fixture(t, savedSettings) {
     return { service, backend, dataDirectory }
 }
 
-test('mode changes persist, restart the backend, and cannot happen during a run', async t => {
+test('mode changes persist without starting the backend and cannot happen during a run', async t => {
     const { service, backend } = fixture(t)
     let restarts = 0
     backend.start = async () => {
@@ -72,49 +79,16 @@ test('mode changes persist, restart the backend, and cannot happen during a run'
         restarts++
     }
     await service.saveSettings({ ...service.settings, mode: 'tasks-search' })
-    assert.equal(restarts, 1)
+    assert.equal(restarts, 0)
     assert.equal(JSON.parse(fs.readFileSync(path.join(service.dataDirectory, 'desktop.json'))).mode, 'tasks-search')
+    backend.endpoint = 'local'
     backend.state = 'running'
     await assert.rejects(service.saveSettings({ ...service.settings, mode: 'tasks' }), /正在运行/)
     assert.equal(service.settings.mode, 'tasks-search')
     backend.state = 'idle'
     await service.saveSettings({ ...service.settings, mode: 'tasks' })
-    assert.equal(restarts, 2)
+    assert.equal(restarts, 0)
     assert.equal(service.settings.mode, 'tasks')
-})
-
-test('startup with saved automatic settings runs point cards even when streaks are complete', async t => {
-    const require = createRequire(import.meta.url)
-    const ReactFunc = require('../../dist/browser/ReactFunc.js').default
-    const { hasPendingEarnTasks } = require('../../dist/functions/TaskPolicy.js')
-    const { service, backend } = fixture(t, {
-        email: 'person@example.com',
-        startOnLogin: true,
-        schedule: { enabled: true }
-    })
-    backend.sessions = ['mobile', 'desktop'].map(platform => ({
-        email: 'person@example.com',
-        platform,
-        hasStorageState: true
-    }))
-    const objects = [
-        { balance: 123, level: 1 },
-        { partner: 'dailyset', dailyPoints: [5], isCurrentDayCompleted: true },
-        { offerId: 'point-card', hash: 'signed', points: 5, destination: 'https://www.bing.com/search?q=test' }
-    ]
-    const html = `<script>self.__next_f.push([1,${JSON.stringify(JSON.stringify(objects))}])</script>`
-    const snapshot = new ReactFunc({
-        logger: { info() {}, debug() {}, warn() {}, error() {} },
-        isMobile: false
-    }).snapshotPage(html)
-    service.resetScanner = async () => ({
-        nextStreakResetAt: new Date(Date.now() + 3600000).toISOString(),
-        pending: hasPendingEarnTasks(snapshot, '10/14/2026')
-    })
-    await service.start()
-    while (service.scheduler.busy) await new Promise(resolve => setImmediate(resolve))
-    assert.equal(backend.starts, 1)
-    assert.match(service.scheduler.message, /自动任务已启动/)
 })
 
 test('manual and scheduled starts share the same gate and require both sessions', async t => {
@@ -132,6 +106,7 @@ test('manual and scheduled starts share the same gate and require both sessions'
     await assert.rejects(service.saveSettings(service.settings), /正在运行/)
     assert.equal(backend.starts, 1)
     await service.stopRun()
+    await service.finishing
     await service.startRun()
     assert.equal(backend.starts, 2)
 })
@@ -186,7 +161,7 @@ test('clear data resets the account and schedule and remains usable', async t =>
     assert.equal(service.settings.email, '')
     assert.equal(service.settings.schedule.enabled, false)
     assert.equal(fs.existsSync(path.join(dataDirectory, 'sessions/marker')), false)
-    assert.equal((await service.snapshot()).state, 'idle')
+    assert.equal((await service.snapshot()).state, 'sleeping')
 })
 
 test('exit waits for an in-flight start before stopping the backend', async t => {
@@ -217,34 +192,6 @@ test('exit waits for an in-flight start before stopping the backend', async t =>
     await assert.rejects(service.startRun(), /退出/)
 })
 
-test('automatic inspection waits for both sessions and exposes reset time', async t => {
-    const { service, backend } = fixture(t)
-    await service.saveSettings({ ...service.settings, email: 'person@example.com', schedule: { enabled: true } })
-    let scans = 0
-    const nextStreakResetAt = new Date(Date.now() + 3600000).toISOString()
-    service.resetScanner = async () => {
-        scans++
-        return { nextStreakResetAt, pending: true }
-    }
-    await service.scheduler.tick()
-    assert.equal(scans, 0)
-    assert.equal(backend.starts, 0)
-    backend.sessions = ['mobile', 'desktop'].map(platform => ({
-        email: 'person@example.com',
-        platform,
-        hasStorageState: true
-    }))
-    service.scheduler.reset()
-    await service.scheduler.tick()
-    assert.equal(scans, 1)
-    assert.equal(backend.starts, 1)
-    assert.ok((await service.snapshot()).automation.nextResetAt)
-    await service.stopRun()
-    service.scheduler.reset()
-    await service.scheduler.tick()
-    assert.equal(backend.starts, 1)
-})
-
 test('inspection holds the operation gate and releases it on failure', async t => {
     const { service, backend } = fixture(t)
     service.settings.email = 'person@example.com'
@@ -269,92 +216,6 @@ test('inspection holds the operation gate and releases it on failure', async t =
     }
     await assert.rejects(service.scanReset(), /offline/)
     assert.equal(service.operation, null)
-})
-
-test('exit during an automatic run persists a visible manual-action notice and does not rerun', async t => {
-    const { service, backend, dataDirectory } = fixture(t, {
-        email: 'person@example.com',
-        startOnLogin: false,
-        schedule: { enabled: true }
-    })
-    backend.sessions = ['mobile', 'desktop'].map(platform => ({
-        email: service.settings.email,
-        platform,
-        hasStorageState: true
-    }))
-    const reset = new Date(Date.now() + 3600000).toISOString()
-    service.resetScanner = async () => ({ nextStreakResetAt: reset, pending: true })
-    await service.scheduler.tick()
-    assert.equal(backend.starts, 1)
-    await service.close()
-
-    const reopenedBackend = new FakeBackend()
-    reopenedBackend.sessions = backend.sessions
-    const reopened = new DesktopService({
-        executable: process.execPath,
-        resourceDirectory: root,
-        dataDirectory,
-        version: 'test',
-        browserDetector: availableBrowser,
-        backendFactory: () => reopenedBackend,
-        resetScanner: async () => ({ nextStreakResetAt: reset, pending: true })
-    })
-    assert.match((await reopened.snapshot()).interruption, /运行中断.*手动运行/)
-    await reopened.scheduler.tick()
-    assert.equal(reopenedBackend.starts, 0)
-    assert.match(reopened.scheduler.message, /运行中断/)
-    await reopened.startRun()
-    assert.equal(reopenedBackend.starts, 1)
-    assert.equal((await reopened.snapshot()).interruption, null)
-    assert.doesNotMatch((await reopened.snapshot()).automation.message, /运行中断/)
-    reopenedBackend.state = 'idle'
-    reopenedBackend.emit('status', { state: 'idle', lastExit: { code: 0, at: new Date().toISOString() } })
-    assert.equal(JSON.parse(fs.readFileSync(path.join(dataDirectory, 'run-state.json'))).status, 'finished')
-    await reopened.close()
-})
-
-test('manual interruption remains visible with automation disabled and blocks same-cycle automation when enabled', async t => {
-    const { service, backend } = fixture(t, {
-        email: 'person@example.com',
-        startOnLogin: false,
-        schedule: { enabled: false }
-    })
-    backend.sessions = ['mobile', 'desktop'].map(platform => ({
-        email: service.settings.email,
-        platform,
-        hasStorageState: true
-    }))
-    await service.startRun()
-    await service.stopRun()
-    assert.match((await service.snapshot()).interruption, /运行中断/)
-    await service.saveSettings({ ...service.settings, schedule: { enabled: true } })
-    service.resetScanner = async () => ({
-        nextStreakResetAt: new Date(Date.now() + 3600000).toISOString(),
-        pending: true
-    })
-    await service.scheduler.tick()
-    assert.equal(backend.starts, 1)
-    assert.match(service.scheduler.message, /运行中断/)
-})
-
-test('normal completion and backend failure update the persisted run state without an open window', async t => {
-    const { service, backend } = fixture(t, {
-        email: 'person@example.com',
-        startOnLogin: false,
-        schedule: { enabled: false }
-    })
-    backend.sessions = ['mobile', 'desktop'].map(platform => ({
-        email: service.settings.email,
-        platform,
-        hasStorageState: true
-    }))
-    await service.startRun()
-    backend.state = 'idle'
-    backend.emit('status', { state: 'idle', lastExit: { code: 0, at: new Date().toISOString() } })
-    assert.equal(service.runState.value.status, 'finished')
-    await service.startRun()
-    backend.emit('failure', '后台已退出')
-    assert.match((await service.snapshot()).interruption, /运行中断/)
 })
 
 test('balance refresh needs only desktop login, persists zero, and does not start tasks', async t => {
@@ -393,6 +254,7 @@ test('balance refresh needs only desktop login, persists zero, and does not star
     service.resetScanner = async () => ({ balance: null })
     await assert.rejects(service.refreshBalance(), /未读取到积分余额/)
     assert.equal((await service.snapshot()).balance.value, 0)
+    backend.endpoint = 'local'
     backend.state = 'running'
     await assert.rejects(service.refreshBalance(), /正在运行/)
     backend.state = 'idle'
@@ -499,9 +361,9 @@ test('missing browsers block login, balance, manual and automatic work without r
     await service.scheduler.tick()
     assert.match(service.scheduler.message, /请安装/)
     assert.equal(backend.starts, 0)
-    assert.deepEqual(service.scheduler.state.attempts, [])
+    assert.equal(service.scheduler.attempts.size, 0)
     assert.equal(service.runState.value, null)
-    assert.equal((await service.snapshot()).state, 'idle')
+    assert.equal((await service.snapshot()).state, 'sleeping')
     service.browserDetector = availableBrowser
     await service.detectBrowser()
     assert.ok((await service.snapshot()).browser.selected)
@@ -509,7 +371,7 @@ test('missing browsers block login, balance, manual and automatic work without r
     assert.equal(backend.starts, 1)
 })
 
-test('browser settings restart the backend only while idle and old sessions survive', async t => {
+test('browser settings stay lazy and old sessions survive', async t => {
     const { service, backend } = fixture(t)
     let restarts = 0
     backend.start = async () => {
@@ -519,9 +381,370 @@ test('browser settings restart the backend only while idle and old sessions surv
     fs.writeFileSync(path.join(service.dataDirectory, 'sessions/marker'), 'saved-session')
     await service.saveSettings({ ...service.settings, browser: 'chrome' })
     assert.equal(service.browser.selected.id, 'chrome')
-    assert.equal(restarts, 1)
+    assert.equal(restarts, 0)
     assert.equal(fs.readFileSync(path.join(service.dataDirectory, 'sessions/marker'), 'utf8'), 'saved-session')
+    backend.endpoint = 'local'
     backend.state = 'running'
     await assert.rejects(service.saveSettings({ ...service.settings, browser: 'edge' }), /正在运行/)
     assert.equal(service.settings.browser, 'chrome')
+})
+
+function configure(service, backend) {
+    service.settings.email = 'person@example.com'
+    backend.sessions = ['mobile', 'desktop'].map(platform => ({
+        email: service.settings.email,
+        platform,
+        hasStorageState: true
+    }))
+}
+function writeReport(
+    service,
+    dataDirectory,
+    tasks = [{ id: 'daily', title: '每日任务', status: 'completed' }],
+    overrides = {}
+) {
+    const run = service.runState.value
+    const report = {
+        account: run.account,
+        runId: run.runId,
+        startedAt: run.startedAt,
+        finishedAt: new Date().toISOString(),
+        tasks,
+        ...overrides
+    }
+    fs.writeFileSync(path.join(dataDirectory, `reports/tasks-abcdef123456-${Date.now()}.json`), JSON.stringify(report))
+    return report
+}
+async function finish(service, backend, code = 0) {
+    backend.state = 'idle'
+    backend.emit('status', { state: 'idle', lastExit: { code, at: new Date().toISOString() } })
+    await service.finishing
+}
+
+test('startup and repeated snapshots never launch API or reset scanner when today is complete', async t => {
+    const { service, backend } = fixture(t)
+    configure(service, backend)
+    service.settings.schedule.enabled = true
+    service.daily.record({ account: service.settings.email, mode: service.settings.mode, date: localDate() }, true)
+    service.resetScanner = () => {
+        throw new Error('must not scan')
+    }
+    await service.start()
+    await service.scheduler.tick()
+    for (let i = 0; i < 5; i++) {
+        const snapshot = await service.snapshot()
+        assert.equal(snapshot.state, 'sleeping')
+        assert.equal(snapshot.automation.completedToday, true)
+        assert.equal(snapshot.sessions.length, 2)
+    }
+    assert.equal(backend.launches, 0)
+    assert.equal(backend.starts, 0)
+})
+
+test('successful report marks today complete, closes API, and manual start overrides completion', async t => {
+    const { service, backend, dataDirectory } = fixture(t)
+    configure(service, backend)
+    service.settings.schedule.enabled = true
+    await service.scheduler.tick()
+    writeReport(service, dataDirectory, [{ status: 'completed' }, { status: 'skipped' }])
+    await finish(service, backend)
+    assert.equal((await service.snapshot()).automation.completedToday, true)
+    assert.equal(backend.endpoint, null)
+    assert.equal((await service.snapshot()).review, null)
+    await service.scheduler.tick()
+    assert.equal(backend.starts, 1)
+    await service.startRun()
+    assert.equal(backend.starts, 2)
+    assert.equal((await service.snapshot()).automation.completedToday, false)
+})
+
+test('failed or uncertain reports never mark completion or continuously retry', async t => {
+    for (const status of [
+        'failed',
+        'manual',
+        'unconfirmed',
+        'missing',
+        'empty',
+        'stale',
+        'other-account',
+        'bad-time',
+        'corrupt'
+    ]) {
+        await t.test(status, async t => {
+            const { service, backend, dataDirectory } = fixture(t)
+            configure(service, backend)
+            service.settings.schedule.enabled = true
+            await service.scheduler.tick()
+            if (status !== 'missing') {
+                writeReport(
+                    service,
+                    dataDirectory,
+                    status === 'empty' ? [] : [{ status: status === 'stale' ? 'completed' : status }],
+                    status === 'stale'
+                        ? { runId: 'old-run' }
+                        : status === 'other-account'
+                          ? { account: 'other@example.com' }
+                          : status === 'bad-time'
+                            ? { finishedAt: 'invalid' }
+                            : {}
+                )
+                if (status === 'corrupt')
+                    fs.writeFileSync(
+                        path.join(
+                            dataDirectory,
+                            fs.readdirSync(path.join(dataDirectory, 'reports')).map(name => 'reports/' + name)[0]
+                        ),
+                        '{'
+                    )
+            }
+            await finish(service, backend)
+            assert.equal((await service.snapshot()).automation.completedToday, false)
+            assert.match((await service.snapshot()).review, /导出诊断/)
+            await service.scheduler.tick()
+            service.scheduler.reset() // Reopening the tray window must not reset attempts.
+            await service.scheduler.tick()
+            assert.equal(backend.starts, 1)
+            assert.equal(backend.endpoint, null)
+        })
+    }
+})
+
+test('a complete report with abnormal exit remains incomplete', async t => {
+    const { service, backend, dataDirectory } = fixture(t)
+    configure(service, backend)
+    await service.startRun()
+    writeReport(service, dataDirectory)
+    await finish(service, backend, 1)
+    assert.equal((await service.snapshot()).automation.completedToday, false)
+})
+
+test('restarting host retries incomplete work but skips verified completed work', async t => {
+    for (const complete of [false, true]) {
+        await t.test(String(complete), async t => {
+            const { service, backend, dataDirectory } = fixture(t, {
+                email: 'person@example.com',
+                startOnLogin: false,
+                schedule: { enabled: true }
+            })
+            configure(service, backend)
+            await service.scheduler.tick()
+            writeReport(service, dataDirectory, [{ status: complete ? 'completed' : 'failed' }])
+            await finish(service, backend)
+            await service.close()
+            const next = new FakeBackend()
+            next.sessions = backend.sessions
+            const reopened = new DesktopService({
+                executable: process.execPath,
+                resourceDirectory: root,
+                dataDirectory,
+                version: 'test',
+                browserDetector: availableBrowser,
+                backendFactory: () => next,
+                sessionReader: () => next.sessions
+            })
+            await reopened.scheduler.tick()
+            assert.equal(next.starts, complete ? 0 : 1)
+            await reopened.close()
+        })
+    }
+})
+
+test('two-day automation never carries today completion into tomorrow, resident or restarted', async t => {
+    for (const mode of ['tasks', 'tasks-search']) {
+        for (const restart of [false, true]) {
+            await t.test(`${mode}, ${restart ? 'restart overnight' : 'resident overnight'}`, async t => {
+                let active
+                t.after(() => active?.close())
+                const { service, backend, dataDirectory } = fixture(t)
+                configure(service, backend)
+                let now = new Date(2026, 9, 28, 23, 58)
+                service.now = () => now
+                service.scheduler.now = () => now
+                await service.saveSettings({ ...service.settings, mode, schedule: { enabled: true } })
+                active = service
+                let currentBackend = backend
+                const complete = async () => {
+                    writeReport(active, dataDirectory)
+                    currentBackend.state = 'idle'
+                    currentBackend.emit('status', {
+                        state: 'idle',
+                        lastExit: { code: 0, at: new Date().toISOString() }
+                    })
+                    await active.finishing
+                }
+                await active.scheduler.tick()
+                assert.equal(backend.starts, 1, 'today starts normally')
+                const todayRunId = active.runState.value.runId
+                await complete()
+                assert.equal((await active.snapshot()).automation.completedToday, true)
+                await active.scheduler.tick()
+                assert.equal(backend.starts, 1, 'today completion prevents duplicate work')
+
+                if (restart) {
+                    await service.close()
+                    currentBackend = new FakeBackend()
+                    currentBackend.sessions = backend.sessions
+                    active = new DesktopService({
+                        executable: process.execPath,
+                        resourceDirectory: root,
+                        dataDirectory,
+                        version: 'test',
+                        browserDetector: availableBrowser,
+                        backendFactory: () => currentBackend,
+                        sessionReader: () => currentBackend.sessions,
+                        now: () => now
+                    })
+                    await active.scheduler.tick()
+                    assert.equal(currentBackend.starts, 0, 'persisted completion survives same-day restart')
+                }
+
+                now = new Date(2026, 9, 29, 0, 1)
+                const before = await active.snapshot()
+                assert.equal(before.automation.date, '2026-10-29')
+                assert.equal(before.automation.completedToday, false, 'yesterday does not complete today')
+                const starts = currentBackend.starts
+                await active.scheduler.tick()
+                assert.equal(currentBackend.starts, starts + 1, 'tomorrow starts despite yesterday completion')
+                assert.equal(active.runState.value.date, '2026-10-29')
+                assert.notEqual(active.runState.value.runId, todayRunId)
+                assert.equal(
+                    (await active.snapshot()).automation.completedToday,
+                    false,
+                    'old report cannot complete new run'
+                )
+                await complete()
+                assert.equal((await active.snapshot()).automation.completedToday, true)
+                await active.scheduler.tick()
+                assert.equal(currentBackend.starts, starts + 1, 'tomorrow also runs only once')
+            })
+        }
+    }
+})
+
+test('cross-midnight running work is attributed to its start date and next day waits', async t => {
+    const { service, backend, dataDirectory } = fixture(t)
+    configure(service, backend)
+    let now = new Date(2026, 9, 28, 23, 59)
+    service.now = () => now
+    service.scheduler.now = () => now
+    service.settings.schedule.enabled = true
+    await service.scheduler.tick()
+    now = new Date(2026, 9, 29, 0, 1)
+    await service.scheduler.tick()
+    assert.equal(backend.starts, 1)
+    writeReport(service, dataDirectory)
+    await finish(service, backend)
+    assert.equal(service.daily.completed(service.settings.email, service.settings.mode, '2026-10-28'), true)
+    assert.equal((await service.snapshot()).automation.completedToday, false)
+    await service.scheduler.tick()
+    assert.equal(backend.starts, 2)
+})
+
+test('corrupt daily state pauses automation and manual run repairs it without losing original', async t => {
+    const { service, backend, dataDirectory } = fixture(t)
+    configure(service, backend)
+    service.settings.schedule.enabled = true
+    service.daily.error = '每日运行记录损坏'
+    fs.writeFileSync(service.daily.file, '{broken')
+    await service.scheduler.tick()
+    assert.equal(backend.starts, 0)
+    await service.startRun()
+    assert.equal(backend.starts, 1)
+    assert.equal(service.daily.error, null)
+    assert.ok(fs.readdirSync(dataDirectory).some(name => name.startsWith('daily-state.json.corrupt-')))
+})
+
+test('status received before /start returns is finalized after its response', async t => {
+    const { service, backend, dataDirectory } = fixture(t)
+    configure(service, backend)
+    const request = backend.request.bind(backend)
+    backend.request = async route => {
+        const result = await request(route)
+        if (route === '/start') {
+            writeReport(service, dataDirectory)
+            backend.emit('status', { state: 'idle', lastExit: { code: 0, at: new Date().toISOString() } })
+            assert.ok(backend.endpoint)
+        }
+        return result
+    }
+    await service.startRun()
+    await service.finishing
+    assert.equal(backend.endpoint, null)
+    assert.equal((await service.snapshot()).automation.completedToday, true)
+})
+
+test('explicit backend check returns to sleep and API failure recycles task processes', async t => {
+    const { service, backend } = fixture(t)
+    await service.restartBackend()
+    assert.equal(backend.endpoint, null)
+    configure(service, backend)
+    await service.startRun()
+    backend.emit('failure', '后台已退出')
+    await service.finishing
+    assert.equal(backend.endpoint, null)
+    assert.match((await service.snapshot()).interruption, /运行中断/)
+    assert.match(service.diagnosticText(), /Local date:.*[\s\S]*Timezone:/)
+})
+
+test('uncertain start failure recycles the backend and cannot repeat automatically in this process', async t => {
+    const { service, backend } = fixture(t)
+    configure(service, backend)
+    service.settings.schedule.enabled = true
+    const request = backend.request.bind(backend)
+    backend.request = async route => {
+        const result = await request(route)
+        if (route === '/start') throw new Error('lost start response')
+        return result
+    }
+    await service.scheduler.tick()
+    await service.scheduler.tick()
+    assert.equal(backend.starts, 1)
+    assert.equal(backend.endpoint, null)
+    assert.equal((await service.snapshot()).automation.completedToday, false)
+})
+
+test('invalid persisted running records pause automation without blocking manual recovery or maintenance', async t => {
+    for (const corrupt of [
+        { status: 'running', account: 'person@example.com', startedAt: 'invalid' },
+        { status: 'running', account: 42, startedAt: new Date().toISOString() }
+    ]) {
+        await t.test(JSON.stringify(corrupt), async t => {
+            const { service, backend, dataDirectory } = fixture(t, undefined, corrupt)
+            configure(service, backend)
+            service.settings.schedule.enabled = true
+            let now = new Date(2026, 9, 28, 12)
+            service.scheduler.now = () => now
+            const file = path.join(dataDirectory, 'run-state.json')
+            const original = fs.readFileSync(file, 'utf8')
+            await service.scheduler.tick()
+            now = new Date(2026, 9, 29, 12)
+            await service.scheduler.tick()
+            assert.equal(backend.starts, 0)
+            assert.match((await service.snapshot()).error, /运行记录损坏/)
+            await service.ensureIdle()
+            await service.startRun()
+            assert.equal(backend.starts, 1)
+            assert.equal(service.runState.error, null)
+            const backups = fs.readdirSync(dataDirectory).filter(name => name.startsWith('run-state.json.corrupt-'))
+            assert.equal(backups.length, 1)
+            assert.equal(fs.readFileSync(path.join(dataDirectory, backups[0]), 'utf8'), original)
+            await assert.rejects(service.startRun(), /正在运行/)
+            await service.stopRun()
+            await service.finishing
+        })
+    }
+    await t.test('login reaches the browser guard and clearing data remains available', async t => {
+        const { service } = fixture(t, undefined, { status: 'running', account: null, startedAt: 'invalid' })
+        service.settings.email = 'person@example.com'
+        service.browserDetector = () => ({
+            installed: [],
+            selected: null,
+            error: '请安装 Chrome 或 Microsoft Edge 后继续'
+        })
+        await assert.rejects(service.login(), /请安装/)
+        await service.clearData()
+        assert.equal(service.runState.value, null)
+        assert.equal(service.runState.error, null)
+        assert.equal((await service.snapshot()).state, 'sleeping')
+    })
 })
