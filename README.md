@@ -1,65 +1,91 @@
-# Rewards Desktop · Microsoft Rewards Script 扩展版
+# Rewards Desktop · 微软 Rewards 自动签到与任务助手
 
-本项目是基于 [TheNetsky/Microsoft-Rewards-Script](https://github.com/TheNetsky/Microsoft-Rewards-Script) 扩展的 **fork**，在上游 Microsoft Rewards 自动化脚本的基础上，增加了中文 Windows 桌面应用 **Rewards Desktop**，并针对中国区域单账号的日常任务流程做了适配。
+基于 [TheNetsky/Microsoft-Rewards-Script](https://github.com/TheNetsky/Microsoft-Rewards-Script) 扩展的中文 Windows 桌面应用，支持浏览器登录、每日任务、积分余额查询、运行报告和托盘自动运行。本 fork 主要适配中国区域单账号使用，同时保留脚本、WSL 和 Docker 部署方式。
 
-**Windows 用户可以直接下载安装包使用，无需安装 Git、Node.js、Docker 或 WSL。** 桌面最新版请以发布页为准；已验证环境为 Windows 11 x64。安装程序和便携包均在 GitHub Release 的 **Assets** 中提供。
+**Windows 用户下载安装包即可使用，无需安装 Git、Node.js、Docker 或 WSL。** 应用内置 Node.js，任务使用系统已安装的 Chrome 或 Microsoft Edge 稳定版。
 
-## 项目来源与扩展
+[下载桌面版](https://github.com/niko4570/Microsoft-Rewards-Script/releases/latest) · [Windows 使用指南](docs/windows-desktop.md) · [WSL / Docker 部署](docs/china-tasks.md) · [脚本技术文档](#table-of-contents)
 
-- **上游项目**：[TheNetsky/Microsoft-Rewards-Script](https://github.com/TheNetsky/Microsoft-Rewards-Script)。本项目沿用其脚本基础与任务执行能力，感谢上游作者和贡献者的工作。
-- **本仓库扩展**：中文桌面界面、浏览器登录入口、手动任务控制、持久报告、诊断导出，以及自动运行任务的托盘功能（当前源码按电脑系统日期调度）；同时提供中国区域 tasks-only 配置与签到状态复查、有限补交机制。
-- **发布关系**：本仓库的桌面应用由此 fork 维护和发布。上游脚本版本与本项目桌面版本分别编号；上游的构建、发布和 Docker 镜像不能代表此 fork 的桌面构建状态。
-- **许可证**：沿用 [GPL-3.0-or-later](LICENSE)，保留上游版权和许可证声明；桌面发布同时提供对应源码。
+## 选择使用方式
+
+| 使用方式               | 适合谁                                   | 从哪里开始                            |
+| ---------------------- | ---------------------------------------- | ------------------------------------- |
+| Windows 桌面版         | 希望通过中文界面登录、运行和查看结果     | [下载与首次使用](#windows-下载)       |
+| WSL / Docker 任务模式  | 已有本地环境，希望后台定时执行中国区任务 | [中国区部署指南](docs/china-tasks.md) |
+| 源码脚本 / Control API | 需要自定义配置或对接其他工具             | [脚本技术文档](#table-of-contents)    |
 
 ## Windows 下载
 
-前往 [Rewards Desktop 最新发布页](https://github.com/niko4570/Microsoft-Rewards-Script/releases/latest)，展开 **Assets** 下载：
+当前桌面正式发布为 [0.4.4](https://github.com/niko4570/Microsoft-Rewards-Script/releases/tag/desktop-v0.4.4)（2026-10-27），采用 **Tauri 2 / Windows WebView2**，已改用系统 Chrome / Edge，不再打包 Chromium。后续版本请以[最新发布页](https://github.com/niko4570/Microsoft-Rewards-Script/releases/latest)为准。
 
-- `Rewards-Desktop-X.Y.Z-x64.exe`：推荐安装版。
-- `Rewards-Desktop-X.Y.Z-x64.zip`：便携版，解压后运行 `Rewards Desktop.exe`。
-- `SHA256SUMS.txt`：发布文件的 SHA-256 校验值。
-- `rewards-desktop-source.zip`：该版本的对应源码，用于查看或自行构建。
+在发布页展开 **Assets**，按用途选择：
 
-[查看所有版本](https://github.com/niko4570/Microsoft-Rewards-Script/releases) · [桌面版更新记录](desktop/CHANGELOG.md)
+| 文件                            | 用途                                      |
+| ------------------------------- | ----------------------------------------- |
+| `Rewards-Desktop-X.Y.Z-x64.exe` | 推荐安装版，按向导安装                    |
+| `Rewards-Desktop-X.Y.Z-x64.zip` | 便携版，解压后运行 `Rewards Desktop.exe`  |
+| `SHA256SUMS.txt`                | 安装包、便携包和对应源码的 SHA-256 校验值 |
+| `rewards-desktop-source.zip`    | 对应版本的构建源码，供开发者使用          |
 
-> **如何选文件？** 想直接使用桌面应用，请选上面的安装版或便携版。GitHub 的 **Code → Download ZIP**、发布页的 **Source code (zip/tar.gz)**，以及 `rewards-desktop-source-*.zip` 都是源码，需要自行安装依赖和构建。
->
-> 当前为预览版，安装程序尚未签名。0.1.8 需手动下载新版；0.1.9 新增应用内检查更新、下载安装包及 SHA-256 校验，下载完成后仍需从托盘退出应用并手动安装。其他 Windows 版本、其他地区和多账号桌面使用尚未完成验证。
+运行环境以 **Windows 11 x64** 为主要验证目标。需要已安装 Chrome 或 Edge 稳定版，以及 WebView2 Runtime；安装版会在缺少 WebView2 时联网补装，便携版需自行准备。安装程序目前尚未签名。
+
+> **下载提示：** 想直接运行应用，请选择 EXE 或桌面便携 ZIP。`Code → Download ZIP`、`Source code (zip/tar.gz)` 和 `rewards-desktop-source.zip` 都是源码。
 
 ## 第一次使用
 
-1. 安装 EXE，或解压便携版后打开 `Rewards Desktop.exe`。
-2. 点击 **打开浏览器登录**，按提示依次完成移动端和桌面端浏览器登录，两次使用同一个 Microsoft 账号。应用内无需填写密码。
-3. 先手动执行一次任务，查看报告中的完成、跳过、失败和未确认状态；程序运行结束不代表所有积分都已到账。
-4. 需要自动运行时，在设置中开启，并保持应用或托盘运行。自动运行和开机启动默认关闭；同账号已有脚本或 Docker 定时任务时，应先暂停旧任务。
+1. 安装 EXE，或将便携 ZIP 解压到独立目录后打开 `Rewards Desktop.exe`。
+2. 确认检测到任务浏览器。默认跟随系统的 Chrome / Edge；默认浏览器不受支持时优先选择 Edge，再选择 Chrome。可在 **应用设置 → 任务浏览器** 中修改；未检测到时按提示安装并重新检测。
+3. 在 **任务总览** 点击 **打开浏览器登录**，依次完成移动端和桌面端登录，两次使用同一个 Microsoft 账号。应用内无需输入邮箱或密码，额外验证在浏览器中完成。
+4. 选择运行模式，先手动执行一次，再到 **运行结果** 查看完成、跳过、失败、未确认及需人工处理的事项。
+5. 需要后台执行时，在设置中开启自动运行，并按需开启 Windows 登录后启动。两项默认关闭；开启后需保持应用或托盘运行。
 
-签到自动恢复已完成实际验证（用户确认）。无人值守运行（开机启动、休眠唤醒、断网恢复及跨日调度）也已验证（用户确认）。0.1.9 已通过 [Windows 云端打包验证](https://github.com/niko4570/Microsoft-Rewards-Script/actions/runs/39364661685) 和 [安装后启动验收](https://github.com/niko4570/Microsoft-Rewards-Script/actions/runs/39365904315)，安装后检查移除了应用 PATH 中的开发工具。干净 Windows 11 首次使用、升级回滚及真实 Release 更新链路仍待验收。
+任务浏览器使用应用自己的独立会话，不读取日常浏览器个人资料。切换浏览器或会话过期后，可能需要重新登录。
 
-[完整的 Windows 使用、升级与故障诊断说明](docs/windows-desktop.md)
+## 桌面功能
 
-> **开发中：Tauri 0.2.0 外壳迁移。** 当前工作区使用系统 WebView2 显示界面，保留 Node，任务自动化使用系统 Chrome / Edge；关闭窗口释放 WebView，托盘继续调度。已发布的 0.1.9 仍为 Electron 版。构建要求、数据兼容和验证边界见 [迁移说明](docs/windows-desktop.md#tauri-020-migration-unreleased)。
+| 功能           | 行为说明                                                             |
+| -------------- | -------------------------------------------------------------------- |
+| 任务模式       | 执行签到、每日活动、阅读等已支持任务，仅执行任务要求的搜索           |
+| 任务＋搜索模式 | 在相同任务基础上执行普通电脑和手机搜索，额度以服务端返回的数据为准   |
+| 积分余额       | 显示最近读取的可用积分与更新时间；可单独刷新，本地保存后重启仍可查看 |
+| 运行结果       | 保存任务状态、运行前后积分及失败原因，方便与 Rewards 页面核对        |
+| 自动运行       | 当前源码按电脑系统日期运行，按账号、模式和日期保存完成状态           |
+| 托盘与开机启动 | 关闭窗口后托盘继续调度；从托盘退出会停止后台工作                     |
+| 更新与诊断     | 检查桌面新版本、下载安装包并校验 SHA-256，也可导出脱敏诊断           |
 
-## 当前源码中的桌面功能（尚未发布）
+切换运行模式会保存设置，从下一次手动或自动运行生效。当前源码按账号、模式和本地日期分别记录完成状态；任务运行、登录或后台操作期间不能切换。
 
-自动运行已改为按电脑系统本地日期保存完成状态：启动时补跑当天未完成任务，常驻跨日后约一分钟内运行。
-失败后可手动运行，或完全退出并重新启动应用重试；关闭窗口再打开不重复尝试。
-手动运行不受今日完成状态限制。任务正常退出且报告核验通过才记为完成，未完成会提示查看结果并导出诊断。
-启动不再独立扫描重置时间，任务 API 按需启动、结束后退出，Node Host 和托盘继续运行。
-详见 [自动运行说明](docs/windows-desktop.md#automatic-runs)。
+### 自动运行与完成核验
 
-首页包含登录会话、自动运行和**积分余额**三张卡片。「积分余额」取代原来的「最近积分变化」，显示最近读取的可用积分及更新时间，支持点击 **刷新余额** 单独查询，无需执行任务或搜索。登录完成后自动读取，任务报告读取到的新余额也会更新卡片。
+以下为当前源码中的新行为，尚未发布：自动运行按电脑系统本地日期判断今日是否完成。启动时补跑当天未完成任务，常驻跨日后约一分钟内运行；今天的完成状态不会阻止明天运行。
 
-余额在本地保存，重启后仍可查看；读取失败时保留上次余额并提示错误，未读取到时显示「暂无数据」。手动刷新需要有效的桌面登录会话，任务运行期间不可刷新。每次运行前后的积分仍可在 **运行结果** 中查看。
+任务正常退出且对应报告核验通过才记为完成。同一进程每天最多自动尝试一次；未完成时可手动运行，或完全退出并重新启动应用重试。关闭窗口再打开不重置尝试记录。手动运行不受今日完成状态限制。
 
-桌面导航保留 **任务总览、运行结果、应用设置**，已移除实时日志页面。排查问题时先查看运行结果，再到 **应用设置 → 维护与版本** 导出诊断或打开数据目录查看 `logs/`。日志在本地保留 30 天，诊断包含最近 7 天的脱敏日志。
+电脑休眠或应用退出期间不会执行，恢复后只处理当前日期，不补跑历史日期。任务 API 按需启动、结束后退出，Node Host 和托盘继续运行。详见[自动运行说明](docs/windows-desktop.md#automatic-runs)。Docker 的调度规则保持独立，见[中国区部署指南](docs/china-tasks.md)。
 
-以上描述对应当前源码，发布包功能以对应版本为准。余额功能已通过构建、代码检查和桌面自动化测试，真实账号查询与 Windows 界面仍待实测。详见[首页积分余额说明](docs/windows-desktop.md#首页积分余额)。
+应用签到未确认时，会在原任务进程内复查；仅在原提交已获有效响应、签到服务可用且仍属同一重置周期时允许一次补交。防重复记录会持久保存。无法可靠确认的结果会提示人工核对。
 
-## 其他使用方式与文档
+**程序运行结束或余额增加，不代表全部任务完成或积分均已到账。** 请结合运行报告与微软页面的完成标记判断。
 
-- **Windows 桌面版**：[使用指南与验证范围](docs/windows-desktop.md)
-- **中国区域 WSL / Docker tasks-only 配置**：[部署指南](docs/china-tasks.md)
-- **源码运行、Docker 和高级配置**：见下方英文技术文档。桌面应用用户可直接使用上面的下载与登录步骤。
+## 升级与本地数据
+
+- 在 **应用设置 → 维护与版本 → 检查更新** 中查找新版。下载完成并通过 SHA-256 校验后，从托盘退出应用，再手动运行安装包。便携版用户可从发布页下载新 ZIP。
+- **首次从 Electron 旧版迁移到 Tauri 版**：先退出旧程序，备份 `%APPDATA%\Rewards Desktop`，卸载旧程序时保留数据，再安装新版。不要同时运行两个版本。
+- 安装版和便携版默认均使用 `%APPDATA%\Rewards Desktop` 保存会话、设置、报告和调度记录。备份时先退出应用；升级、卸载和回滚细节见[完整指南](docs/windows-desktop.md)。
+- 排查问题先查看 **运行结果**，再通过 **应用设置 → 维护与版本** 导出诊断或打开数据目录查看 `logs/`。日志保留 30 天，诊断包含最近 7 天的脱敏日志。
+- 开启桌面自动运行前，暂停同账号已有的脚本或 Docker 定时任务，避免多个调度器同时执行。
+
+## 版本与验证范围
+
+桌面发布版本以 [Releases](https://github.com/niko4570/Microsoft-Rewards-Script/releases) 为准；仓库中的 npm / Cargo 版本可能只是构建提示，不一定等于最新发布版本。[历史更新记录](desktop/CHANGELOG.md)中的开发中描述也应结合对应 Release 阅读。
+
+当前发布流程包含 CI、Windows 构建打包、打包后界面及安装后运行检查。自动检查不执行真实 Microsoft 登录或账户任务；真实账号任务、旧版升级、休眠恢复和用户机器上的更新链路仍需单独验证。旧 Electron 版本的人工验收不代表新外壳已通过同样验证。其他 Windows 版本、地区及多账号桌面使用尚未完成验证。
+
+## 项目来源与许可
+
+上游 [TheNetsky/Microsoft-Rewards-Script](https://github.com/TheNetsky/Microsoft-Rewards-Script) 提供脚本基础与任务执行能力。本 fork 增加中文桌面界面、中国区域任务适配、服务端周期调度、持久报告与诊断，并独立维护桌面发布。
+
+项目沿用 [GPL-3.0-or-later](LICENSE)，保留上游版权和许可证声明；桌面发布同时提供对应源码。桌面版与上游脚本分别编号，上游构建或镜像不能代表本 fork 的桌面版本。
 
 ---
 
@@ -116,7 +142,7 @@ git clone https://github.com/niko4570/Microsoft-Rewards-Script.git
 cd Microsoft-Rewards-Script
 ```
 
-Or, download the corresponding source archive from [Releases](https://github.com/niko4570/Microsoft-Rewards-Script/releases) and extract it. For desktop 0.1.9, the source archive is `rewards-desktop-source.zip`; the `Rewards-Desktop-*-x64.zip` archive is a packaged Windows app, not a script source checkout.
+Or, download the corresponding source archive from [Releases](https://github.com/niko4570/Microsoft-Rewards-Script/releases) and extract it. For desktop releases, use `rewards-desktop-source.zip` to obtain the effective build versions; `Rewards-Desktop-*-x64.zip` is a packaged Windows app, not a script source checkout.
 
 ## Account Setup
 
@@ -161,7 +187,9 @@ npm run start
 
 ## Docker
 
-- Copy the sample [`compose.yaml`](compose.yaml)
+The supplied [`compose.yaml`](compose.yaml) builds this fork from local source and defaults to the single-account China tasks-only profile. Clone the repository first; copying the Compose file alone is insufficient. For initial setup and interactive login, follow [中国区部署指南](docs/china-tasks.md).
+
+- Review [`compose.yaml`](compose.yaml)
 - Copy and rename [`env.example`](env.example) to `.env` and add your account credentials:
 
 ```env
@@ -171,6 +199,8 @@ ACCOUNT_1_EMAIL=email@example.com
 
 `ACCOUNT_N_PASSWORD` is optional; omit it for passwordless/Authenticator-only accounts.
 
+- The supplied Compose file enables Telegram notifications and requires `CONFIG_TELEGRAM_BOTTOKEN` and `CONFIG_TELEGRAM_CHATID` in `.env`. To run without notifications, set `CONFIG_TELEGRAM_ENABLED: 'false'` and remove the two required token/chat-ID entries from Compose.
+- Create the mobile and desktop sessions on the host before starting the tasks-only container. See [manual login](#manual-login); the default container cannot display the login window.
 - Review `compose.yaml` to adjust scheduling, timezone, and config options.
 
 > [!NOTE]
@@ -183,7 +213,7 @@ ACCOUNT_1_EMAIL=email@example.com
 > If a new image adds config options you're missing, a warning will appear in the container logs.
 > To update, delete `./config/config.json` and restart - a fresh one will be generated from the latest example, with your `compose.yaml` overrides re-applied.
 
-- Start the container: `docker compose up -d`
+- Build and start the container: `docker compose up -d --build`
 
 > [!TIP]
 > Monitor logs with `docker logs microsoft-rewards-script`, useful for viewing passwordless login codes or diagnosing issues.
@@ -301,6 +331,7 @@ Edit `config.json` to customize behavior, or set `CONFIG_*` environment variable
 Desktop and mobile search quotas are tracked independently from the dashboard counters. All `mobileSearch` entries are combined for the mobile quota, while all `pcSearch` entries are combined for desktop execution; a counter explicitly identified as Edge is also shown separately for diagnostics. The script skips only the completed platform, so a completed `60/60` mobile quota does not prevent an incomplete desktop quota from running. With `parallelSearching` enabled, both incomplete quotas can run concurrently in their own browser contexts.
 
 > [!NOTE]
+>
 > \* Docker `CONFIG_*` array values are comma-separated strings e.g. `"error,warn"`. Regex patterns must be set directly in `config.json`.
 
 #### Query sources
@@ -400,6 +431,7 @@ Regardless of the experimental search settings, normal Rewards actions use the c
 | `consoleLogFilter.regexPatterns` | string[] | `[]`                   | Regex patterns for filtering      |                                 |
 
 > [!NOTE]
+>
 > \* Docker `CONFIG_*` array values are comma-separated strings e.g. `"error,warn"`. Regex patterns must be set directly in `config.json`.
 
 ### Proxy
@@ -429,6 +461,7 @@ Account browser proxies support `http://`, `https://`, `socks4://`, and `socks5:
 | `webhook.webhookLogFilter.regexPatterns` | string[] | `[]`                                                 | Regex patterns for filtering      |                                         |
 
 > [!NOTE]
+>
 > \* Docker `CONFIG_*` array values are comma-separated strings e.g. `"error,warn"`. Regex patterns must be set directly in `config.json`.
 
 ---
@@ -537,8 +570,13 @@ the one-compensation-per-account-and-cycle limit across restarts and manual runs
 These checks run inside the task process, without launching another full run.
 
 The Docker daily scheduler also checks on container startup and every five minutes
-for a missed run. For a fixed daily cron such as `0 13 * * *`, it waits until the
-scheduled time in `TZ`, then runs only if today's run has not succeeded. Completion
+for a missed run. Before a valid server reset time has been recorded, a fixed daily cron such as
+`0 13 * * *` waits until the scheduled time in `TZ`, then runs only if today's
+run has not succeeded. Once the Rewards page provides a valid reset timestamp,
+the scheduler prioritizes that server cycle, waits one minute after reset, and
+uses the five-minute catch-up checks to start eligible work. A local midnight
+does not start a new cycle early. Missing reset timestamps fall back to the
+fixed schedule; see [中国区部署指南](docs/china-tasks.md) for details. Completion
 and attempts are saved atomically in `./config/daily-run-state.json`, so restarts
 and container recreation retain them. Missed previous days are not replayed.
 An interrupted or failed process can retry after `DAILY_RETRY_MINUTES` (default
