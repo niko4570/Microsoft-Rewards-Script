@@ -549,6 +549,80 @@ test('restarting host retries incomplete work but skips verified completed work'
     }
 })
 
+test('two-day automation never carries today completion into tomorrow, resident or restarted', async t => {
+    for (const mode of ['tasks', 'tasks-search']) {
+        for (const restart of [false, true]) {
+            await t.test(`${mode}, ${restart ? 'restart overnight' : 'resident overnight'}`, async t => {
+                let active
+                t.after(() => active?.close())
+                const { service, backend, dataDirectory } = fixture(t)
+                configure(service, backend)
+                let now = new Date(2026, 9, 28, 23, 58)
+                service.now = () => now
+                service.scheduler.now = () => now
+                await service.saveSettings({ ...service.settings, mode, schedule: { enabled: true } })
+                active = service
+                let currentBackend = backend
+                const complete = async () => {
+                    writeReport(active, dataDirectory, [{ status: 'completed' }], {
+                        finishedAt: now.toISOString()
+                    })
+                    currentBackend.state = 'idle'
+                    currentBackend.emit('status', {
+                        state: 'idle',
+                        lastExit: { code: 0, at: now.toISOString() }
+                    })
+                    await active.finishing
+                }
+                await active.scheduler.tick()
+                assert.equal(backend.starts, 1, 'today starts normally')
+                const todayRunId = active.runState.value.runId
+                await complete()
+                assert.equal((await active.snapshot()).automation.completedToday, true)
+                await active.scheduler.tick()
+                assert.equal(backend.starts, 1, 'today completion prevents duplicate work')
+
+                if (restart) {
+                    await service.close()
+                    currentBackend = new FakeBackend()
+                    currentBackend.sessions = backend.sessions
+                    active = new DesktopService({
+                        executable: process.execPath,
+                        resourceDirectory: root,
+                        dataDirectory,
+                        version: 'test',
+                        browserDetector: availableBrowser,
+                        backendFactory: () => currentBackend,
+                        sessionReader: () => currentBackend.sessions,
+                        now: () => now
+                    })
+                    await active.scheduler.tick()
+                    assert.equal(currentBackend.starts, 0, 'persisted completion survives same-day restart')
+                }
+
+                now = new Date(2026, 9, 29, 0, 1)
+                const before = await active.snapshot()
+                assert.equal(before.automation.date, '2026-10-29')
+                assert.equal(before.automation.completedToday, false, 'yesterday does not complete today')
+                const starts = currentBackend.starts
+                await active.scheduler.tick()
+                assert.equal(currentBackend.starts, starts + 1, 'tomorrow starts despite yesterday completion')
+                assert.equal(active.runState.value.date, '2026-10-29')
+                assert.notEqual(active.runState.value.runId, todayRunId)
+                assert.equal(
+                    (await active.snapshot()).automation.completedToday,
+                    false,
+                    'old report cannot complete new run'
+                )
+                await complete()
+                assert.equal((await active.snapshot()).automation.completedToday, true)
+                await active.scheduler.tick()
+                assert.equal(currentBackend.starts, starts + 1, 'tomorrow also runs only once')
+            })
+        }
+    }
+})
+
 test('cross-midnight running work is attributed to its start date and next day waits', async t => {
     const { service, backend, dataDirectory } = fixture(t)
     configure(service, backend)
