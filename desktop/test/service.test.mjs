@@ -564,13 +564,11 @@ test('two-day automation never carries today completion into tomorrow, resident 
                 active = service
                 let currentBackend = backend
                 const complete = async () => {
-                    writeReport(active, dataDirectory, [{ status: 'completed' }], {
-                        finishedAt: now.toISOString()
-                    })
+                    writeReport(active, dataDirectory)
                     currentBackend.state = 'idle'
                     currentBackend.emit('status', {
                         state: 'idle',
-                        lastExit: { code: 0, at: now.toISOString() }
+                        lastExit: { code: 0, at: new Date().toISOString() }
                     })
                     await active.finishing
                 }
