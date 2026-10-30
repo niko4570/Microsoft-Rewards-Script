@@ -2,7 +2,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { pathToFileURL } from 'node:url'
 
 import { FingerprintGenerator } from 'fingerprint-generator'
 import { newInjectedContext } from 'fingerprint-injector'
@@ -462,7 +462,9 @@ async function main() {
     log('SUCCESS', `Manual login completed for ${account.email}`)
 }
 
-const isDirectRun = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+// Windows resource paths may use the \\?\ prefix. Node normalizes that prefix
+// when loading the module URL; normalize argv the same way before comparing.
+const isDirectRun = process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url
 if (isDirectRun) {
     main()
         .catch(error => {

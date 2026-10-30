@@ -23,14 +23,23 @@ try {
     // Load the actual login entry point without opening a browser or using an account.
     // Run from isolated user data without inherited Node injection settings.
     for (const script of ['manualLogin.js', 'scanReset.js']) {
-        const login = spawnSync(executable, [path.join(runtime, 'scripts/main', script), '--help'], {
-            cwd: data,
-            env: { ...process.env, NODE_PATH: '', NODE_OPTIONS: '' },
-            stdio: 'inherit',
-            timeout: 30000
-        })
+        const login = spawnSync(
+            executable,
+            [path.toNamespacedPath(path.join(runtime, 'scripts/main', script)), '--help'],
+            {
+                cwd: data,
+                env: { ...process.env, NODE_PATH: '', NODE_OPTIONS: '' },
+                encoding: 'utf8',
+                timeout: 30000
+            }
+        )
         if (login.error) throw login.error
-        if (login.status !== 0) throw new Error('手动登录入口依赖检查失败')
+        if (login.stdout) process.stdout.write(login.stdout)
+        if (login.stderr) process.stderr.write(login.stderr)
+        // A skipped main() can exit zero without doing anything. Require the
+        // real help output, including with Windows resource namespace prefixes.
+        const expected = script === 'manualLogin.js' ? 'Microsoft Rewards manual login' : 'read-only reset inspection'
+        if (login.status !== 0 || !login.stdout.includes(expected)) throw new Error('手动登录入口依赖或执行检查失败')
     }
     const probe = `
         const { createRequire } = require('node:module');
