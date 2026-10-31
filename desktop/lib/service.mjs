@@ -88,10 +88,10 @@ export class DesktopService extends EventEmitter {
     sessions() {
         return this.sessionReader().filter(session => session.email.toLowerCase() === this.settings.email.toLowerCase())
     }
-    recordOutcome() {
+    recordOutcome(reports = this.reports()) {
         const run = this.runState.value
         if (!run?.runId || !run.date || !run.mode) return
-        const report = matchingReport(run, this.reports())
+        const report = matchingReport(run, reports)
         const complete = run.status === 'finished' && reportComplete(report)
         // Never overwrite a corrupt daily file automatically during recovery.
         if (!this.daily.error) this.daily.record(run, complete)
@@ -491,6 +491,39 @@ export class DesktopService extends EventEmitter {
             report => !report.account || report.account.toLowerCase() === this.settings.email.toLowerCase()
         )
         const date = localDate(this.now())
+        const run = this.runState.value
+        // A report can become readable after the exit event. Reconcile only a
+        // verified normal exit, without launching the backend or replaying work.
+        if (
+            run?.status === 'finished' &&
+            !this.daily.error &&
+            !this.daily.completed(run.account, run.mode, run.date) &&
+            reportComplete(matchingReport(run, reports))
+        )
+            this.recordOutcome(reports)
+        const completedToday = this.daily.completed(this.settings.email, this.settings.mode, date)
+        const currentRun =
+            run?.account === this.settings.email.toLowerCase() && run.mode === this.settings.mode && run.date === date
+        const automationStatus =
+            currentRun && run.status === 'running'
+                ? 'running'
+                : completedToday
+                  ? 'completed'
+                  : currentRun
+                    ? 'review'
+                    : 'pending'
+        const automationMessage =
+            this.daily.error ||
+            this.runState.error ||
+            (automationStatus === 'running'
+                ? '任务正在运行，结束后自动同步完成情况。'
+                : automationStatus === 'completed'
+                  ? '当前账号和模式今日已完成，跨日后可自动运行。'
+                  : automationStatus === 'review'
+                    ? this.review || '本次运行已结束，完成情况尚未确认，请查看运行结果。'
+                    : !this.settings.schedule.enabled
+                      ? '自动运行已关闭，可手动开始任务。'
+                      : '今日尚无已确认的完成记录，应用将在空闲时检查自动运行条件。')
         let balance = this.balance?.account === this.settings.email.toLowerCase() ? this.balance : null
         for (const report of reports) {
             const value = report.finalPoints ?? report.initialPoints
@@ -510,8 +543,9 @@ export class DesktopService extends EventEmitter {
             browser: this.browser,
             automation: {
                 date,
-                completedToday: this.daily.completed(this.settings.email, this.settings.mode, date),
-                message: this.scheduler.message
+                completedToday,
+                status: automationStatus,
+                message: automationMessage
             },
             backendReady: Boolean(this.backend.endpoint),
             state: this.stopping

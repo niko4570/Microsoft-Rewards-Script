@@ -748,3 +748,51 @@ test('invalid persisted running records pause automation without blocking manual
         assert.equal((await service.snapshot()).state, 'sleeping')
     })
 })
+
+test('late matching report reconciles completion on the next snapshot without replaying tasks', async t => {
+    const { service, backend, dataDirectory } = fixture(t)
+    configure(service, backend)
+    await service.startRun()
+    assert.equal((await service.snapshot()).automation.status, 'running')
+    await finish(service, backend)
+    assert.equal((await service.snapshot()).automation.status, 'review')
+    writeReport(service, dataDirectory)
+    const snapshot = await service.snapshot()
+    assert.equal(snapshot.automation.completedToday, true)
+    assert.equal(snapshot.automation.status, 'completed')
+    assert.match(snapshot.automation.message, /今日已完成/)
+    assert.equal(snapshot.review, null)
+    assert.equal(backend.starts, 1)
+    assert.equal(backend.endpoint, null)
+    const saved = fs.readFileSync(service.daily.file, 'utf8')
+    await service.snapshot()
+    assert.equal(fs.readFileSync(service.daily.file, 'utf8'), saved)
+})
+
+test('late reports cannot complete abnormal exits or a different run', async t => {
+    for (const code of [0, 1]) {
+        await t.test(`exit ${code}`, async t => {
+            const { service, backend, dataDirectory } = fixture(t)
+            configure(service, backend)
+            await service.startRun()
+            await finish(service, backend, code)
+            writeReport(service, dataDirectory, undefined, code === 0 ? { runId: 'other' } : {})
+            const snapshot = await service.snapshot()
+            assert.equal(snapshot.automation.completedToday, false)
+            assert.equal(snapshot.automation.status, 'review')
+        })
+    }
+})
+
+test('completion display stays current with automation disabled and after a scheduler reset', async t => {
+    const { service, backend, dataDirectory } = fixture(t)
+    configure(service, backend)
+    await service.startRun()
+    writeReport(service, dataDirectory)
+    await finish(service, backend)
+    service.scheduler.reset()
+    const snapshot = await service.snapshot()
+    assert.equal(snapshot.settings.schedule.enabled, false)
+    assert.equal(snapshot.automation.status, 'completed')
+    assert.match(snapshot.automation.message, /今日已完成/)
+})

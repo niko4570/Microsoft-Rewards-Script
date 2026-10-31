@@ -11,7 +11,7 @@ const stateNames: Record<string, string> = {
     starting: '正在启动',
     stopping: '正在停止',
     login: '等待浏览器登录',
-    scanning: '正在检查重置时间',
+    scanning: '正在检查任务状态',
     balance: '正在查询积分余额',
     offline: '后台未连接',
     saving: '保存设置中',
@@ -41,7 +41,7 @@ function ReportSummary({ tasks }: Pick<TaskReport, 'tasks'>) {
             <p className={needsReview.length ? 'notice' : 'muted'}>
                 {needsReview.length
                     ? `需要检查 ${needsReview.length} 项：${titles.slice(0, 3).join('、')}${titles.length > 3 ? '等' : ''}（原因见明细）`
-                    : '需要检查：无'}
+                    : '本报告各项均已完成或跳过；跳过原因请查看明细。'}
             </p>
         </div>
     )
@@ -148,7 +148,7 @@ function App() {
                         : snapshot.state === 'offline'
                           ? '本地服务未连接'
                           : '任务后台按需启动'}
-                    <small>v{snapshot.version} · 私人测试版</small>
+                    <small>v{snapshot.version} · 桌面版</small>
                 </div>
             </aside>
             <main className="content">
@@ -212,13 +212,17 @@ function App() {
                                     {!configured
                                         ? '从登录你的账号开始'
                                         : loggedIn
-                                          ? '准备好运行今天的任务'
+                                          ? snapshot.state === 'running'
+                                              ? '正在执行任务'
+                                              : snapshot.automation.completedToday
+                                                ? '今天的任务已完成'
+                                                : '可以开始今天的任务'
                                           : '完成浏览器登录'}
                                 </h2>
                                 <p>
                                     {!configured
                                         ? '点击打开浏览器登录，在浏览器中登录你的 Microsoft 账号。应用不会保存你的密码。'
-                                        : '账号由浏览器登录会话管理。会话过期后请重新打开浏览器登录。'}
+                                        : '使用已保存的手机端和电脑端会话运行；如提示登录失效或需要验证，请重新登录。'}
                                 </p>
                             </div>
                             <div className="actions">
@@ -226,7 +230,10 @@ function App() {
                                     className="primary"
                                     disabled={busy || !idle || !configured || !loggedIn || !snapshot.browser.selected}
                                     onClick={() =>
-                                        void act(() => window.desktop.start(), '任务已启动，请查看日志和运行结果')
+                                        void act(
+                                            () => window.desktop.start(),
+                                            '任务已启动，结束后会自动更新运行结果与今日状态'
+                                        )
                                     }
                                 >
                                     开始任务
@@ -247,8 +254,8 @@ function App() {
                             </h3>
                             <p className="muted">
                                 {snapshot.settings.mode === 'tasks-search'
-                                    ? '完成签到、每日活动和阅读等任务，再执行电脑和手机普通搜索，获取每日搜索额度积分。'
-                                    : '完成签到、每日活动和阅读等任务，只执行任务要求的搜索。'}
+                                    ? '执行当前账号可用的签到、活动、阅读等任务，并尝试完成电脑端和手机端的每日搜索额度；实际到账以报告和 Rewards 页面为准。'
+                                    : '执行当前账号可用的签到、活动、阅读等任务，以及任务要求的搜索；不会额外刷满每日普通搜索额度。'}
                             </p>
                             <button
                                 disabled={busy || !idle}
@@ -269,10 +276,11 @@ function App() {
                                 <h3>{loggedIn ? '已保存' : '待登录'}</h3>
                                 <p>
                                     {snapshot.sessions.filter(session => session.hasStorageState).length} / 2 个会话 ·
-                                    保存不代表仍有效
+                                    有效性会在运行时检查
                                 </p>
                                 <p className="muted">
-                                    使用手动浏览器登录，不填写或保存密码。第一版按中国区域、中文运行。
+                                    在浏览器中完成 Microsoft
+                                    登录与验证，应用保存登录会话。当前按中国区域和中文配置执行任务。
                                 </p>
                                 <button
                                     disabled={busy || !idle || !snapshot.browser.selected}
@@ -292,18 +300,20 @@ function App() {
                             <section className="card">
                                 <p className="label">自动运行</p>
                                 <h3>
-                                    {snapshot.settings.schedule.enabled
-                                        ? snapshot.automation.completedToday
-                                            ? '今日已完成'
-                                            : '今日尚未完成'
-                                        : '尚未开启'}
+                                    {
+                                        {
+                                            pending: '今日待运行',
+                                            running: '任务运行中',
+                                            completed: '今日已完成',
+                                            review: '结果待确认'
+                                        }[snapshot.automation.status]
+                                    }
                                 </h3>
-                                <p>
-                                    {snapshot.settings.schedule.enabled
-                                        ? snapshot.automation.message
-                                        : '开启后按电脑系统日期每天自动运行'}
+                                <p>{snapshot.automation.message}</p>
+                                <p className="muted">
+                                    {snapshot.automation.date} · 当前账号与模式 · 自动运行
+                                    {snapshot.settings.schedule.enabled ? '已开启' : '已关闭'}
                                 </p>
-                                <p className="muted">{snapshot.automation.date} · 电脑系统日期 · 托盘常驻可跨日运行</p>
                                 <button onClick={() => setTab('settings')}>自动运行设置</button>
                             </section>
                             <section className="card">
@@ -336,14 +346,16 @@ function App() {
                             </section>
                         </div>
                         <section className="panel">
-                            <h3>第一次使用</h3>
+                            <h3>使用步骤</h3>
                             <ol>
-                                <li>点击打开浏览器登录，用同一个账号完成手机和桌面两次浏览器登录。</li>
-                                <li>先手动运行一次，检查每项任务的结果。</li>
-                                <li>暂停旧 Docker 的定时任务后，开启自动运行。</li>
+                                <li>点击「打开浏览器登录」，按提示用同一账号依次完成手机端和电脑端登录。</li>
+                                <li>点击「开始任务」，结束后到「运行结果」查看完成、跳过及需要处理的项目。</li>
+                                <li>
+                                    需要每日自动执行时，在「应用设置」开启自动运行并保存；避免其他脚本同时运行同一账号。
+                                </li>
                             </ol>
                             <p className="muted">
-                                关闭窗口会留在托盘。退出应用会停止任务；重新打开或休眠恢复后会检查当前周期的未完成任务。
+                                关闭窗口后应用继续在托盘运行；完全退出会停止任务。开启自动运行后，启动应用和休眠恢复时会检查电脑日期，常驻时跨日约一分钟内检查。
                             </p>
                         </section>
                         {snapshot.lastExit && (
@@ -360,12 +372,13 @@ function App() {
                 {tab === 'results' && (
                     <>
                         <p className="muted">
-                            报告保存在本机，重启应用后仍可查看。积分变化与各项任务是否完成分别展示。
+                            这里展示本机最近 20
+                            份报告中属于当前账号的记录，重启后仍可查看。积分变化不等于每项任务均已完成；失败、需手动处理和未确认项目请逐项查看原因。
                         </p>
                         {!snapshot.reports.length && (
                             <section className="empty">
                                 <h2>还没有运行报告</h2>
-                                <p>完成首次任务后，结果会显示在这里。</p>
+                                <p>首次运行生成报告后会自动显示；运行中可返回总览查看状态。</p>
                             </section>
                         )}
                         {snapshot.reports.map((item, index) => (
@@ -435,7 +448,8 @@ function App() {
                                 <option value="edge">Microsoft Edge</option>
                             </select>
                             <p className="muted">
-                                使用独立浏览器实例和应用会话，不读取日常浏览器的个人资料。切换浏览器后如会话失效，请重新登录。
+                                自动选择会优先使用系统默认的 Chrome 或 Edge，找不到时尝试已安装的
+                                Edge、Chrome。任务使用应用独立会话；指定浏览器不可用时，请安装或重新选择。
                             </p>
                             <label className="check">
                                 <input
@@ -459,9 +473,9 @@ function App() {
                                 登录 Windows 后启动到托盘
                             </label>
                             <p className="muted">
-                                打开应用时，今天未完成就自动运行；常驻或休眠恢复后按系统日期检查，跨日后约一分钟内运行。
-                                当次失败后不会连续重跑，可手动开始任务，或完全退出并重新启动应用重试。
-                                手动运行不受今日完成状态限制；任务后台仅在需要时启动。
+                                按当前账号、运行模式和电脑日期分别记录完成情况。启动应用时若今日未完成，会尝试自动运行；常驻时每分钟检查，休眠恢复后也会检查。
+                                本次应用启动期间，同一账号和模式每天只自动尝试一次；未完成时可手动重试，完全退出后重新打开也可再次自动尝试。
+                                只有正常结束且报告各项均已完成或跳过，才记为今日完成。手动运行随时可用；关闭自动运行不影响已有完成记录。
                             </p>
                             <button className="primary" type="submit" disabled={busy || !idle}>
                                 保存设置
@@ -469,14 +483,14 @@ function App() {
                         </form>
                         <section className="panel">
                             <h3>维护与版本</h3>
-                            <p>Rewards Desktop v{snapshot.version} · Windows 11 x64 私人测试版</p>
+                            <p>Rewards Desktop v{snapshot.version} · Windows x64 桌面版</p>
                             <p className="muted">
                                 排查问题时，请先查看「运行结果」，再导出诊断。日志在本机保留 30 天，诊断包含最近 7
                                 天的脱敏日志；也可打开数据目录查看 logs 文件夹。
                             </p>
                             <p className="muted">
-                                检查 GitHub
-                                上的桌面新版本，直接下载安装包。下载完成后退出应用并运行安装包；本地账号、会话和设置会保留。测试包暂未签名。
+                                从 GitHub
+                                检查并下载桌面安装包，下载后校验文件。请完全退出应用再安装；升级保留本地设置、登录会话和报告。安装包暂未签名。
                             </p>
                             <div role="status" aria-live="polite">
                                 {snapshot.update.status === 'checking' && <p>正在检查更新…</p>}
