@@ -45,7 +45,15 @@ fn main() {
             .map(|arg| arg.to_str().unwrap())
             .collect::<Vec<_>>()
             .join(" ");
-        assert_eq!(target, format!("/D={}", install.display()));
+        let target = target
+            .strip_prefix("/D=")
+            .expect("Missing final /D= argument");
+        // temp_dir may use an 8.3 alias (RUNNER~1), while current_exe returns
+        // the long path (runneradmin). Compare resolved directories, not spelling.
+        assert_eq!(
+            Path::new(target).canonicalize().unwrap(),
+            install.canonicalize().unwrap()
+        );
         std::fs::write(root.join("installed"), b"installed").unwrap();
         return;
     }
