@@ -33,7 +33,12 @@ export interface Snapshot {
         filePath: string | null
     }
     settings: Settings
-    automation: { date: string; completedToday: boolean; message: string }
+    automation: {
+        date: string
+        completedToday: boolean
+        status: 'pending' | 'running' | 'completed' | 'review'
+        message: string
+    }
     backendReady: boolean
     state: string
     error: string | null
