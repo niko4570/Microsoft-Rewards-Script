@@ -9,6 +9,7 @@ const actions = [
     'downloadEdge',
     'checkUpdate',
     'downloadUpdate',
+    'installUpdate',
     'showUpdateFile',
     'start',
     'stop',

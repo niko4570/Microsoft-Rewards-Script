@@ -17,7 +17,8 @@ export class DesktopHost {
             downloadChrome: () => this.native('downloadChrome'),
             downloadEdge: () => this.native('downloadEdge'),
             checkUpdate: () => this.updater.check(),
-            downloadUpdate: () => this.updater.download(name => this.native('saveFile', { name, kind: 'installer' })),
+            downloadUpdate: () => this.updateApp(true),
+            installUpdate: () => this.updateApp(false),
             showUpdateFile: () => {
                 if (!this.updater.state.filePath) throw new Error('请先下载安装包')
                 return this.native('revealFile', this.updater.state.filePath)
@@ -54,6 +55,22 @@ export class DesktopHost {
             }
         }
         service.on('change', () => this.changed())
+    }
+
+    async updateApp(download) {
+        try {
+            return await this.service.exclusive('updating', async () => {
+                await this.service.ensureIdle()
+                if (download) await this.updater.download(name => this.native('updateDestination', name))
+                const result = await this.updater.install(file => this.native('installUpdate', file))
+                // Keep the scheduler and other operations blocked until the shell exits.
+                this.service.stopping = true
+                return result
+            })
+        } catch (error) {
+            this.updater.setState({ error: error.message })
+            throw error
+        }
     }
 
     snapshot() {

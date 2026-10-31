@@ -490,7 +490,8 @@ function App() {
                             </p>
                             <p className="muted">
                                 从 GitHub
-                                检查并下载桌面安装包，下载后校验文件。请完全退出应用再安装；升级保留本地设置、登录会话和报告。安装包暂未签名。
+                                下载并校验更新后，应用将自动退出、静默安装并重新启动。请先停止任务并完成或取消登录；升级保留本地设置、登录会话和报告。自动更新仅支持安装版，便携版请从发布页下载新版
+                                ZIP。安装包暂未签名。
                             </p>
                             <div role="status" aria-live="polite">
                                 {snapshot.update.status === 'checking' && <p>正在检查更新…</p>}
@@ -503,15 +504,16 @@ function App() {
                                     </p>
                                 )}
                                 {snapshot.update.status === 'downloaded' && (
-                                    <p>
-                                        v{snapshot.update.version} 下载完成，SHA256 校验通过。请退出应用后运行安装包。
-                                    </p>
+                                    <p>v{snapshot.update.version} 下载完成，可重试安装。</p>
+                                )}
+                                {snapshot.update.status === 'installing' && (
+                                    <p>正在退出应用并安装更新，完成后将自动重新启动…</p>
                                 )}
                                 {snapshot.update.error && <p className="notice error">{snapshot.update.error}</p>}
                             </div>
                             <div className="actions">
                                 <button
-                                    disabled={updateBusy}
+                                    disabled={updateBusy || snapshot.update.status === 'installing'}
                                     onClick={() => void updateApp(() => window.desktop.checkUpdate())}
                                 >
                                     检查更新
@@ -522,12 +524,15 @@ function App() {
                                         disabled={updateBusy}
                                         onClick={() => void updateApp(() => window.desktop.downloadUpdate())}
                                     >
-                                        下载新版安装包
+                                        立即更新
                                     </button>
                                 )}
                                 {snapshot.update.status === 'downloaded' && (
-                                    <button onClick={() => void act(() => window.desktop.showUpdateFile())}>
-                                        打开下载位置
+                                    <button
+                                        disabled={updateBusy}
+                                        onClick={() => void updateApp(() => window.desktop.installUpdate())}
+                                    >
+                                        重试安装
                                     </button>
                                 )}
                                 <button

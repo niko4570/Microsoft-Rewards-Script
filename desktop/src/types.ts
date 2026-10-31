@@ -26,7 +26,7 @@ export interface Snapshot {
     balance: { value: number | null; updatedAt: string | null; error: string | null }
     version: string
     update: {
-        status: 'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'downloaded' | 'error'
+        status: 'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'error'
         version: string | null
         progress: number
         error: string | null
@@ -56,6 +56,7 @@ export interface DesktopBridge {
     downloadEdge(): Promise<void>
     checkUpdate(): Promise<void>
     downloadUpdate(): Promise<boolean>
+    installUpdate(): Promise<boolean>
     showUpdateFile(): Promise<void>
     start(): Promise<unknown>
     stop(): Promise<unknown>

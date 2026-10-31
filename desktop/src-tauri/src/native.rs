@@ -1,5 +1,5 @@
 use serde_json::{json, Value};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_opener::OpenerExt;
 
@@ -17,6 +17,31 @@ pub fn invoke(app: &AppHandle, custom: bool, request: &Value) -> Result<Value, S
                 set_autostart(enabled)?;
             }
             Ok(Value::Null)
+        }
+        "updateDestination" | "installUpdate" => {
+            if custom || cfg!(dev) || !cfg!(windows) {
+                return Err("自动更新仅支持正式安装的 Windows 应用；便携版请下载新版 ZIP".into());
+            }
+            let cache = app
+                .path()
+                .app_cache_dir()
+                .map_err(|e| e.to_string())?
+                .join("updates");
+            let executable = crate::update::installed_executable()?;
+            match request["action"].as_str() {
+                Some("updateDestination") => Ok(json!(crate::update::destination(
+                    &cache,
+                    value.as_str().ok_or("缺少安装包文件名")?
+                )?)),
+                _ => {
+                    crate::update::prepare(
+                        &cache,
+                        value.as_str().ok_or("缺少安装包路径")?,
+                        &executable,
+                    )?;
+                    Ok(Value::Null)
+                }
+            }
         }
         "saveFile" => {
             let name = value["name"].as_str().ok_or("缺少文件名")?;

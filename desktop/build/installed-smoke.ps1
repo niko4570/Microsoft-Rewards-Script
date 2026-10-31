@@ -56,6 +56,12 @@ try {
     $executable = Join-Path $installDirectory 'Rewards Desktop.exe'
     if (-not (Test-Path $executable)) { throw 'Installed application executable is missing.' }
 
+    # Exercise the exact silent overwrite flags used by the update helper.
+    # This is same-version reinstall coverage; old-to-new Release upgrades remain separate.
+    $process = Start-Process -FilePath $installer -ArgumentList @('/S', '/UPDATE', "/D=$installDirectory") -Wait -PassThru
+    if ($process.ExitCode -ne 0) { throw "Silent overwrite failed: $($process.ExitCode)" }
+    if (-not (Test-Path $executable)) { throw 'Silent overwrite removed the application executable.' }
+
     & $node (Join-Path $PSScriptRoot 'smoke-runtime.mjs') (Join-Path $installDirectory 'backend')
     if ($LASTEXITCODE -ne 0) { throw 'Installed runtime check failed.' }
     $env:MRS_PACKAGED_EXECUTABLE = $executable
@@ -63,7 +69,7 @@ try {
     $env:MRS_SMOKE_SCREENSHOT = Join-Path $desktop 'release/installed-smoke.png'
     & $node (Join-Path $PSScriptRoot 'ui-smoke.mjs')
     if ($LASTEXITCODE -ne 0) { throw 'Installed application UI check failed.' }
-    Write-Output 'Installer checksum, silent installation, bundled runtime and installed UI without development tools on PATH: PASS'
+    Write-Output 'Installer checksum, silent installation and same-version overwrite, bundled runtime and installed UI without development tools on PATH: PASS'
 } finally {
     $env:Path = $savedPath
     $env:NODE_PATH = $savedNodePath

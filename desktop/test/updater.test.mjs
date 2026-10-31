@@ -111,3 +111,57 @@ test('rejects missing assets, foreign download URLs, rate limits and concurrent 
     finish(null)
     await downloading
 })
+
+test('installation rechecks the cached checksum, retains retry state and prevents overlapping updates', async t => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'rewards-install-test-'))
+    t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
+    const file = path.join(directory, 'installer.exe')
+    const instance = updater([release('0.1.10')])
+    await assert.rejects(
+        instance.install(() => {}),
+        /请先下载/
+    )
+    await instance.check()
+    await instance.download(async () => file)
+    let launches = 0
+    await assert.rejects(
+        instance.install(() => {
+            launches++
+            throw new Error('无法启动安装程序')
+        }),
+        /无法启动/
+    )
+    assert.equal(instance.state.status, 'downloaded')
+    assert.equal(instance.state.error, '无法启动安装程序')
+    fs.writeFileSync(file, 'tampered')
+    await assert.rejects(
+        instance.install(() => {
+            launches++
+        }),
+        /校验失败/
+    )
+    assert.equal(launches, 1)
+    fs.writeFileSync(file, payload)
+    let releaseLaunch
+    const installing = instance.install(async destination => {
+        assert.equal(destination, file)
+        await new Promise(resolve => {
+            releaseLaunch = resolve
+        })
+    })
+    while (!releaseLaunch) await new Promise(resolve => setImmediate(resolve))
+    await assert.rejects(instance.check(), /请稍候/)
+    await assert.rejects(
+        instance.download(() => file),
+        /请稍候/
+    )
+    await assert.rejects(
+        instance.install(() => {}),
+        /请稍候/
+    )
+    releaseLaunch()
+    assert.equal(await installing, true)
+    assert.equal(instance.state.status, 'installing')
+    assert.equal(instance.state.error, null)
+    await assert.rejects(instance.check(), /请稍候/)
+})
