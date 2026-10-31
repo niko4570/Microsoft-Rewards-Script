@@ -90,3 +90,77 @@ test('closing the UI suspends snapshots while reopening preserves the scheduler 
     assert.equal(host.uiVisible, true)
     assert.equal(resets, 1)
 })
+
+test('one-click update uses cache and prepares install before marking the service as stopping', async () => {
+    const service = new EventEmitter()
+    const calls = []
+    service.exclusive = async (name, action) => {
+        calls.push(name)
+        return action()
+    }
+    service.ensureIdle = async () => calls.push('idle')
+    const updater = {
+        download: async choose => {
+            assert.equal(await choose('installer.exe'), 'cached.exe')
+            calls.push('download')
+        },
+        install: async launch => {
+            await launch('cached.exe')
+            calls.push('install')
+            return true
+        },
+        setState: value => calls.push(value)
+    }
+    const host = new DesktopHost({
+        service,
+        updater,
+        native: async (action, value) => {
+            calls.push([action, value])
+            assert.equal(service.stopping, undefined)
+            return 'cached.exe'
+        }
+    })
+    assert.equal(await host.invoke('downloadUpdate'), true)
+    assert.equal(service.stopping, true)
+    assert.deepEqual(calls, [
+        'updating',
+        'idle',
+        ['updateDestination', 'installer.exe'],
+        'download',
+        ['installUpdate', 'cached.exe'],
+        'install'
+    ])
+})
+
+test('busy tasks and failed installer launch leave the service available; retry skips download', async () => {
+    const service = new EventEmitter()
+    let idle = false
+    service.exclusive = async (_name, action) => action()
+    service.ensureIdle = async () => {
+        if (!idle) throw new Error('任务正在运行')
+    }
+    let downloads = 0
+    let installs = 0
+    const updater = {
+        download: async () => downloads++,
+        install: async () => {
+            installs++
+            throw new Error('辅助程序启动失败')
+        },
+        setState: () => {}
+    }
+    const host = new DesktopHost({ service, updater, native: () => {} })
+    await assert.rejects(host.invoke('downloadUpdate'), /任务正在运行/)
+    assert.equal(downloads, 0)
+    assert.equal(installs, 0)
+    idle = true
+    await assert.rejects(host.invoke('installUpdate'), /辅助程序启动失败/)
+    assert.equal(downloads, 0)
+    assert.equal(installs, 1)
+    assert.equal(service.stopping, undefined)
+    service.exclusive = async () => {
+        throw new Error('登录或其他操作正在进行')
+    }
+    await assert.rejects(host.invoke('downloadUpdate'), /登录/)
+    assert.equal(downloads, 0)
+})

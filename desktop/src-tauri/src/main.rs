@@ -2,6 +2,7 @@
 
 mod host;
 mod native;
+mod update;
 
 use host::Host;
 use serde_json::Value;
@@ -67,6 +68,7 @@ const ACTIONS: &[&str] = &[
     "downloadEdge",
     "checkUpdate",
     "downloadUpdate",
+    "installUpdate",
     "showUpdateFile",
     "start",
     "stop",
@@ -108,12 +110,20 @@ async fn desktop_invoke(
         return Ok(Value::Null);
     }
     let host = app.state::<Desktop>().host.clone();
-    tauri::async_runtime::spawn_blocking(move || host.request(&action, value))
+    let updating = matches!(action.as_str(), "downloadUpdate" | "installUpdate");
+    let result = tauri::async_runtime::spawn_blocking(move || host.request(&action, value))
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())??;
+    if updating && result == Value::Bool(true) {
+        app.exit(0);
+    }
+    Ok(result)
 }
 
 fn main() {
+    if update::run_helper() {
+        return;
+    }
     let mut context = tauri::generate_context!();
     if let Some(data) =
         std::env::args().find_map(|arg| arg.strip_prefix("--user-data-dir=").map(str::to_owned))

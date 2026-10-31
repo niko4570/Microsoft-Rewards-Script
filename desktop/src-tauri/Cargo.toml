@@ -28,3 +28,7 @@ strip = true
 lto = true
 codegen-units = 1
 panic = "abort"
+
+[[example]]
+name = "update-helper-smoke"
+path = "../build/update-helper-smoke.rs"
