@@ -31,6 +31,7 @@ export class DesktopUpdater {
         this.state = { status: 'idle', version: null, progress: 0, error: null, filePath: null }
         this.release = null
         this.busy = false
+        this.digest = null
     }
 
     setState(value) {
@@ -51,9 +52,10 @@ export class DesktopUpdater {
     }
 
     async check() {
-        if (this.busy) throw new Error('正在检查或下载更新，请稍候')
+        if (this.busy || this.state.status === 'installing') throw new Error('正在检查、下载或安装更新，请稍候')
         this.busy = true
         this.release = null
+        this.digest = null
         this.setState({ status: 'checking', error: null, version: null, progress: 0, filePath: null })
         try {
             let selected = null
@@ -97,7 +99,7 @@ export class DesktopUpdater {
     }
 
     async download(choosePath) {
-        if (this.busy) throw new Error('正在检查或下载更新，请稍候')
+        if (this.busy || this.state.status === 'installing') throw new Error('正在检查、下载或安装更新，请稍候')
         if (!this.release) throw new Error('请先检查更新')
         this.busy = true
         let temporary
@@ -137,6 +139,7 @@ export class DesktopUpdater {
             }
             await fs.promises.rename(temporary, destination)
             temporary = null
+            this.digest = digest
             this.setState({ status: 'downloaded', progress: 100, filePath: destination })
             return true
         } catch (error) {
@@ -144,6 +147,27 @@ export class DesktopUpdater {
             throw error
         } finally {
             if (temporary) await fs.promises.rm(temporary, { force: true }).catch(() => {})
+            this.busy = false
+        }
+    }
+
+    async install(launch) {
+        if (this.busy || this.state.status === 'installing') throw new Error('正在检查、下载或安装更新，请稍候')
+        if (this.state.status !== 'downloaded' || !this.state.filePath || !this.digest)
+            throw new Error('请先下载并校验安装包')
+        this.busy = true
+        try {
+            // Recheck on retries too: the cached file may have changed since download.
+            const hash = createHash('sha256')
+            for await (const chunk of fs.createReadStream(this.state.filePath)) hash.update(chunk)
+            if (hash.digest('hex') !== this.digest) throw new Error('安装包校验失败，请重新检查更新并下载')
+            this.setState({ status: 'installing', error: null })
+            await launch(this.state.filePath)
+            return true
+        } catch (error) {
+            this.setState({ status: 'downloaded', error: error.message })
+            throw error
+        } finally {
             this.busy = false
         }
     }
