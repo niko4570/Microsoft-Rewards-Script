@@ -141,6 +141,53 @@ test('unknown, locked and disabled activities skip; empty daily data is not comp
     assert.equal(empty.runner.report.tasks.find(task => task.id === 'daily-set').status, 'unconfirmed')
 })
 
+test('zero-point offers and unsupported app activities produce no result or log', async () => {
+    const f = fixture([
+        offer('zero', { pointProgressMax: 0 }),
+        offer('done-zero', { complete: true, pointProgressMax: 0 }),
+        offer('paid')
+    ])
+    const logs = []
+    f.bot.logger.info = (...args) => logs.push(args.join(' '))
+    f.bot.config.workers.doAppPromotions = true
+    f.app.response.promotions = [
+        { name: 'unsupported', attributes: { offerid: 'unsupported', type: 'unknown', title: 'Unsupported' } },
+        { name: 'supported', attributes: { offerid: 'supported', type: 'sapphire', title: 'Supported' } }
+    ]
+    f.bot.activities.doAppReward = async item => {
+        f.events.push(item.attributes.offerid)
+        item.attributes.complete = 'true'
+    }
+    await f.runner.run(f.data, f.app)
+    assert.deepEqual(f.events, ['checkin', 'paid', 'supported'])
+    for (const id of ['zero', 'done-zero', 'unsupported']) {
+        assert.equal(
+            f.runner.report.tasks.some(task => task.id === id),
+            false
+        )
+        assert.equal(
+            logs.some(line => line.includes(id === 'unsupported' ? 'Unsupported' : `Task ${id}`)),
+            false
+        )
+    }
+    assert.equal(f.runner.report.tasks.find(task => task.id === 'supported').status, 'completed')
+})
+
+test('offers refreshed to zero points are silently omitted before execution', async () => {
+    const f = fixture([offer('changed')])
+    let reads = 0
+    f.bot.browser.func.getDashboardData = async () => {
+        if (++reads > 1) f.data.dashboard.dailySetPromotions[date][0].pointProgressMax = 0
+        return f.data
+    }
+    await f.runner.run(f.data, f.app)
+    assert.deepEqual(f.events, ['checkin'])
+    assert.equal(
+        f.runner.report.tasks.some(task => task.id === 'changed'),
+        false
+    )
+})
+
 test('missing app token reports manual action while browser tasks continue', async () => {
     const f = fixture([offer()])
     f.bot.accessToken = ''
