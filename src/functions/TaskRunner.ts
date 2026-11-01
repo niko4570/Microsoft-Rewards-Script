@@ -349,7 +349,8 @@ export class TaskRunner {
         })
     }
 
-    private async promotion(offer: BasePromotion): Promise<TaskResult> {
+    private async promotion(offer: BasePromotion): Promise<TaskResult | undefined> {
+        if (offer.pointProgressMax <= 0) return
         const reason = offerSkipReason(offer)
         if (reason)
             return this.add({
@@ -369,6 +370,7 @@ export class TaskRunner {
                     status: 'unconfirmed',
                     reason: '任务不再出现在当天数据中'
                 })
+            if (fresh.pointProgressMax <= 0) return
             const freshReason = offerSkipReason(fresh)
             if (freshReason)
                 return this.add({
@@ -441,15 +443,7 @@ export class TaskRunner {
             if (!id || seen.has(id) || ['checkin', 'msnreadearn'].includes(offer.attributes.type ?? '')) continue
             seen.add(id)
             if (offer.attributes.complete?.toLowerCase() === 'true') continue
-            if (offer.attributes.type !== 'sapphire') {
-                this.add({
-                    id,
-                    title: offer.attributes.title ?? offer.name,
-                    status: 'skipped',
-                    reason: '尚不支持此应用活动类型'
-                })
-                continue
-            }
+            if (offer.attributes.type !== 'sapphire') continue
             await this.bot.activities.doAppReward(offer)
             const after = (await this.read(() => this.bot.browser.func.getAppDashboardData())).response.promotions.find(
                 item => item.attributes.offerid === id
