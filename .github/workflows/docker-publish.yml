@@ -87,4 +87,3 @@ jobs:
                   fail_on_unmatched_files: true
                   files: |
                       release/rewards-script-source.zip
-                      release/rewards-script-source.zip.sha256

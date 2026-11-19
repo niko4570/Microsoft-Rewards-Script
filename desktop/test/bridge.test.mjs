@@ -27,11 +27,12 @@ test('private desktop bridge rejects extra login arguments and unknown privilege
     let logins = 0
     service.login = () => ++logins
     const host = new DesktopHost({ service, native: () => {}, version: '0.1.9' })
-    assert.equal(await host.invoke('login'), 1)
-    await assert.rejects(host.invoke('login', 'unused@example.com'), /此操作不接受参数/)
+    assert.equal(await host.invoke('login', { accountId: 'test' }), 1)
+    await assert.rejects(host.invoke('login', 'unused@example.com'), /操作参数无效/)
     for (const action of ['constructor', '__proto__', 'shutdown', 'openDirectory', 'setAutoStart'])
         await assert.rejects(host.invoke(action), /不支持的操作/)
-    assert.equal(logins, 1)
+    assert.equal(await host.invoke('login'), 2)
+    assert.equal(logins, 2)
 })
 
 test('diagnostic export and clearing data require a native destination or confirmation', async () => {
@@ -59,8 +60,8 @@ test('balance refresh is exposed through the private bridge without arguments', 
     let refreshes = 0
     service.refreshBalance = () => ++refreshes
     const host = new DesktopHost({ service, native: () => {}, version: 'test' })
-    assert.equal(await host.invoke('refreshBalance'), 1)
-    await assert.rejects(host.invoke('refreshBalance', { account: 'other' }), /此操作不接受参数/)
+    assert.equal(await host.invoke('refreshBalance', { accountId: 'test' }), 1)
+    await assert.rejects(host.invoke('refreshBalance', { account: 'other' }), /操作参数无效/)
     assert.equal(refreshes, 1)
 })
 
@@ -163,4 +164,17 @@ test('busy tasks and failed installer launch leave the service available; retry 
     }
     await assert.rejects(host.invoke('downloadUpdate'), /登录/)
     assert.equal(downloads, 0)
+})
+
+test('name-only account updates cross the private bridge while invalid enabled values are rejected', async () => {
+    const service = new EventEmitter()
+    let saved
+    service.saveAccount = value => {
+        saved = value
+        return value
+    }
+    const host = new DesktopHost({ service, native: async () => {}, version: 'test' })
+    await host.invoke('saveAccount', { id: 'legacy', name: '备注' })
+    assert.deepEqual(saved, { id: 'legacy', name: '备注' })
+    await assert.rejects(host.invoke('saveAccount', { id: 'legacy', name: '备注', enabled: 'false' }), /账号参数无效/)
 })

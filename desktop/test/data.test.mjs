@@ -27,7 +27,7 @@ test('fresh data is private, tasks-only and upgrades preserve existing data', t 
     fs.writeFileSync(path.join(directory, 'desktop.json'), JSON.stringify(settings))
     fs.writeFileSync(path.join(directory, 'sessions/marker'), 'persistent session')
     const before = fs.readFileSync(path.join(directory, 'config.json'))
-    assert.deepEqual(initializeData(directory, template), settings)
+    assert.deepEqual(initializeData(directory, template), validateSettings(settings))
     assert.deepEqual(fs.readFileSync(path.join(directory, 'config.json')), before)
     assert.equal(fs.readFileSync(path.join(directory, 'sessions/marker'), 'utf8'), 'persistent session')
 })

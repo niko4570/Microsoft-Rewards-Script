@@ -71,6 +71,10 @@ const ACTIONS: &[&str] = &[
     "installUpdate",
     "showUpdateFile",
     "start",
+    "startAll",
+    "saveAccount",
+    "removeAccount",
+    "completeMigration",
     "stop",
     "login",
     "cancelLogin",
@@ -87,8 +91,42 @@ fn validate_action(action: &str, value: &Value) -> Result<(), String> {
     if !ACTIONS.contains(&action) {
         return Err("不支持的操作".into());
     }
+    if action == "login" && value.is_null() {
+        return Ok(());
+    }
+    let account_action = matches!(
+        action,
+        "start" | "login" | "refreshBalance" | "removeAccount"
+    );
+    if account_action {
+        let object = value.as_object().ok_or("操作参数无效")?;
+        let id = object
+            .get("accountId")
+            .and_then(Value::as_str)
+            .ok_or("账号标识无效")?;
+        if object.len() != 1
+            || id.is_empty()
+            || id.len() > 64
+            || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-')
+        {
+            return Err("账号标识无效".into());
+        }
+        return Ok(());
+    }
+    if matches!(action, "saveAccount" | "completeMigration") {
+        let object = value.as_object().ok_or("操作参数无效")?;
+        let fields: &[&str] = if action == "saveAccount" {
+            &["id", "email", "name", "enabled"]
+        } else {
+            &["email"]
+        };
+        if object.keys().any(|key| !fields.contains(&key.as_str())) {
+            return Err("操作参数无效".into());
+        }
+        return Ok(());
+    }
     if action != "saveSettings" && !value.is_null() {
-        return Err("此操作不接受参数".into());
+        return Err("账号标识无效".into());
     }
     Ok(())
 }
@@ -255,11 +293,14 @@ fn main() {
 mod tests {
     use super::*;
     #[test]
-    fn balance_refresh_accepts_no_arguments() {
-        assert!(validate_action("refreshBalance", &Value::Null).is_ok());
+    fn balance_refresh_requires_account_id() {
+        assert!(validate_action("refreshBalance", &Value::Null).is_err());
+        assert!(
+            validate_action("refreshBalance", &serde_json::json!({"accountId":"test"})).is_ok()
+        );
         assert_eq!(
             validate_action("refreshBalance", &serde_json::json!({ "account": "other" })),
-            Err("此操作不接受参数".into())
+            Err("账号标识无效".into())
         );
     }
 

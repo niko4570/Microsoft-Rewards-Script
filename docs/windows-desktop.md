@@ -1,6 +1,6 @@
 # Rewards Desktop 预览版使用与发布指南
 
-Rewards Desktop 是本仓库基于 [TheNetsky/Microsoft-Rewards-Script](https://github.com/TheNetsky/Microsoft-Rewards-Script) 扩展的中文 Windows 桌面应用。上游提供脚本基础，本 fork 增加桌面界面与中国区域单账号任务流程适配，并独立维护桌面发布。项目沿用 [GPL-3.0-or-later](../LICENSE)。
+Rewards Desktop 是本仓库基于 [TheNetsky/Microsoft-Rewards-Script](https://github.com/TheNetsky/Microsoft-Rewards-Script) 扩展的中文 Windows 桌面应用。上游提供脚本基础，本 fork 增加桌面界面与中国区域任务流程适配，并独立维护桌面发布。项目沿用 [GPL-3.0-or-later](../LICENSE)。
 
 应用内置 Node.js，自动化任务使用系统已安装的 Chrome 或 Microsoft Edge 稳定版，不再携带 Chromium。使用时无需安装 Git、Node.js、Docker 或 WSL。已验证环境为 Windows 11 x64；其他 Windows 版本、其他地区与多账号桌面使用尚未完成验证。
 
@@ -12,25 +12,37 @@ Rewards Desktop 是本仓库基于 [TheNetsky/Microsoft-Rewards-Script](https://
 
 - **推荐安装版**：`Rewards-Desktop-X.Y.Z-x64.exe`，下载后按向导安装。
 - **便携版**：`Rewards-Desktop-X.Y.Z-x64.zip`，解压到单独目录后运行 `Rewards Desktop.exe`。
-- **校验文件**：`SHA256SUMS.txt`；**对应源码**：`rewards-desktop-source.zip`。
+- **对应源码**：`rewards-desktop-source.zip`。
 
 后续版本请查看本仓库的 [Releases](https://github.com/niko4570/Microsoft-Rewards-Script/releases)。
 
 GitHub 的 **Code → Download ZIP**、**Source code (zip/tar.gz)** 和 `rewards-desktop-source-*.zip` 均为源码，需要自行构建。上游脚本发布包也不包含本 fork 的桌面安装程序。
 
-1. 下载发布页提供的 `SHA256SUMS.txt`，核对安装包或便携包的 SHA-256。预览版安装程序尚未签名，请使用可信下载来源，不要关闭系统防护。
+1. 从本仓库 GitHub Release 下载安装包或便携包。预览版安装程序尚未签名，请使用可信下载来源，不要关闭系统防护。
 2. 安装 EXE，或解压便携版后运行 `Rewards Desktop.exe`。
-3. 在任务概览点击 **打开浏览器登录**，依次完成移动端和桌面端浏览器登录，两次使用同一个 Microsoft 账号。应用内无需填写邮箱或密码；登录可取消。
+3. 在任务总览点击 **打开浏览器登录**，完成后自动添加账户。通过 **＋ 添加其他账户** 打开全新的登录会话，无需填写邮箱。应用不保存密码；登录可取消。
 4. 先手动执行一次任务并查看报告。完成、跳过、失败、需人工处理和未确认会分别记录；退出码为 0 不代表所有任务完成或所有积分到账。
 5. 开启桌面自动运行前，暂停同账号的旧 Docker 或脚本定时任务。自动运行和开机启动默认关闭，开启后需保持应用或托盘运行。
 
 保存的会话可能过期，额外验证或应用授权仍可能需要交互操作。遇到提示时请查看报告，必要时重新登录。后续章节说明自动运行、升级、数据位置及构建验证。
 
+## 多账号（当前源码，尚未发布）
+
+首页用账户选项卡集中展示登录状态和任务操作。首次直接打开浏览器登录，添加其他账户也使用同一登录流程。账户采用独立固定的内部标识，默认显示“账户 N”，可修改备注；无需填写真实邮箱。所有账户共用任务模式、浏览器和自动运行设置。停用仅排除批量和自动运行，仍可单独运行。
+
+每次登录启动独立浏览器上下文，并使用仅包含该账户的临时会话数据库。桌面端沿用本次手机端登录的 Cookie；两端成功后才写回该账户槽位。失败或取消不创建新账户，不覆盖旧会话。真实 Microsoft 身份的自动识别、重复身份去重与两端身份比对尚未实现，账户名称不是微软身份认证结果。
+
+「运行全部已启用账号」按添加顺序串行执行。未登录、启动失败或任务失败会显示原因并继续后续账号；停止会取消当前任务及剩余队列。运行期间可以修改备注；添加、移除、启停账户、保存运行设置、登录和刷新余额仍受运行限制。关闭窗口保留托盘队列，完全退出会停止且不恢复手动队列。
+
+自动运行跳过当天已完成的账号，完成判据和手动重试规则与下文一致。余额、会话和完成记录分别保存；运行结果可按账号筛选最近 20 份报告。移除账号前需确认，会清理该账号会话、余额及调度状态，历史报告保留。
+
+旧版真实邮箱及内部占位账户均直接保留原有会话、余额和历史，不强制迁移或重新填写邮箱。内部占位账户默认显示为“账户 1”。真实多账户任务与 Windows 安装升级仍需实机验收。
+
 ## 系统浏览器
 
 首次打开时应用检测已安装的 Chrome / Edge。默认选择系统 HTTPS 默认浏览器；默认浏览器不是这两种或无法读取时，依次选择 Edge、Chrome。可在「应用设置 → 任务浏览器」指定其中一种，保存后生效；任务、登录期间不能切换。
 
-如果没有可用浏览器，应用仍可查看设置和报告，但不能登录、运行任务或刷新余额。点击「下载 Chrome / Edge」打开官方网站，安装后点击「重新检测」。明确指定的浏览器缺失时不会自动改用另一种，请安装或修改选择。自动调度在失败后按原有五分钟间隔重试，不会将缺失浏览器记为已执行周期。
+如果没有可用浏览器，应用仍可查看设置和报告，但不能登录、运行任务或刷新余额。点击「下载 Chrome / Edge」打开官方网站，安装后点击「重新检测」。明确指定的浏览器缺失时不会自动改用另一种，请安装或修改选择。自动调度在失败后在后续每分钟检查时重试，不会将缺失浏览器记为已执行周期。
 
 应用启动独立浏览器实例并使用自己的会话，不读取用户日常浏览器个人资料。已有应用会话继续保留；切换浏览器或会话过期后可能需要重新登录。浏览器自动更新、企业策略可能影响自动化兼容性；启动失败可查看错误或导出诊断。此改造主要减少安装体积，运行时仍需浏览器进程。
 
@@ -40,9 +52,9 @@ GitHub 的 **Code → Download ZIP**、**Source code (zip/tar.gz)** 和 `rewards
 
 ## 首页积分余额
 
-首页「积分余额」卡片显示最近读取的可用余额和更新时间，取代原来的「最近积分变化」。登录完成后自动读取，任务报告或自动检查读取到的新余额也会更新卡片。点击「刷新余额」可单独查询，不执行任务或搜索；查询需要有效的桌面登录会话，任务运行期间不可刷新。
+首页「总积分余额」仅展示所有账户最近已知余额之和，并显示已读取账户数；部分账户尚未读取时不把小计当成完整总额。登录完成后自动读取，任务报告或自动检查读取到的新余额也会更新卡片。点击「刷新总余额」依次查询所有账户，不执行任务或搜索；查询需要有效的桌面登录会话，任务运行期间不可刷新。
 
-余额会在本地保存，重启后仍可查看。刷新失败会保留上次余额并提示错误；未读取到余额时显示「暂无数据」，不会当作 0。运行前后积分仍可在「运行结果」中查看。
+余额会在本地保存，重启后仍可查看。刷新失败会保留上次余额并提示错误；所有账户都未读取到余额时显示「暂无」，不会当作 0。运行前后积分仍可在「运行结果」中查看。
 
 ## Automatic runs
 
@@ -51,11 +63,11 @@ GitHub 的 **Code → Download ZIP**、**Source code (zip/tar.gz)** 和 `rewards
 跨日后首次检查执行当天任务。休眠恢复后重新检查，不补跑历史日期。
 
 每天按账号与运行模式保存完成记录，无需在零点主动清零。任务跨日结束仍归属启动当天；
-切换账号或运行模式使用各自的记录。修改系统日期或时区会改变“今天”的判断，程序不跟随代理地区推断重置时间。
+各账号及运行模式使用各自的记录。修改系统日期或时区会改变“今天”的判断，程序不跟随代理地区推断重置时间。
 
 只有本次任务正常退出、有效报告非空且所有项目均完成或正常跳过，才记为当天完成。
 失败、中断、需要手动处理、未确认或报告缺失均不算完成。当天失败后，本次应用进程不会连续重跑；
-可以点击 **开始任务**，或从托盘完全退出再打开应用重试。关闭窗口再从托盘打开不算重启。
+可以点击 **运行此账号**，或从托盘完全退出再打开应用重试。关闭窗口再从托盘打开不算重启。
 手动运行不受当天完成状态限制，但不能同时启动多个任务。
 
 启动与空闲时仅读取本地状态、会话元数据、报告和余额缓存，不独立扫描重置时间。
@@ -92,7 +104,7 @@ full task run.
 
 0.1.9 起可在 **应用设置 → 维护与版本 → 检查更新** 查找 GitHub 上的桌面正式发布。
 
-安装版发现新版本后点击 **立即更新**，应用自动下载到更新缓存、显示进度并校验 SHA256，然后退出应用及后台进程、静默安装并重新启动。任务运行中请先停止；登录或其他操作进行中请先完成或取消。安装启动失败可点击 **重试安装**，重试会重新核对缓存文件校验值。
+安装版发现新版本后点击 **立即更新**，应用自动下载到更新缓存、显示进度，然后退出应用及后台进程、静默安装并重新启动。任务运行中请先停止；登录或其他操作进行中请先完成或取消。安装启动失败可点击 **重试安装**，重试会检查缓存文件是否存在且大小完整。
 
 仅支持当前用户安装且运行目录与安装记录一致的 Windows 安装版。开发、隔离目录和便携版不会执行自动安装；便携版请从发布页下载新 ZIP。旧版应用仍需手动安装一次包含此功能的版本。
 
@@ -199,7 +211,7 @@ release. Build resources exclude local config, credentials, sessions, and report
 
 The **Windows desktop test package** GitHub Actions workflow supports manual
 execution, `desktop-v*` tags, and relevant pull requests. Successful builds upload
-installers, portable archives, corresponding source, checksums, and this guide as
+installers, portable archives, corresponding source and this guide as
 CI artifacts. The **Publish v4 updates** workflow calls this same validation chain
 when runtime changes reach `v4`, then automatically creates a `desktop-vX.Y.Z`
 GitHub Release after all checks pass. Manual desktop test runs and pull requests
@@ -239,7 +251,7 @@ workflow repeats it against the installed app without development tools on PATH.
 The harness enables WebView2 CDP only through its test process environment; it
 checks real API connection, settings persistence, argument rejection, destroying
 and reopening a window, single-instance behavior and graceful exit. Update
-selection/download/checksum behavior is covered by Node tests, without a real
+selection/download behavior is covered by Node tests, without a real
 release download or a mocked native UI dialog.
 
 Local migration validation on October 20, 2026 passed:
@@ -324,9 +336,8 @@ license files, and renderer licenses. Provide the corresponding source archive a
    the desktop GitHub Latest marker.
 5. Both component releases include a corresponding source ZIP with the effective
    version files used during the build. Its `RELEASE-BUILD.json` records the original
-   source SHA, effective component versions and SHA-256 hashes of the version files.
-   The desktop source ZIP is covered by `SHA256SUMS.txt`; the script source ZIP has
-   its own `.sha256` file. GitHub's automatically generated tag source archives still
+   source commit SHA and effective component versions.
+   GitHub's automatically generated tag source archives still
    reflect the original commit's version hints; use the attached corresponding-source
    ZIP to reproduce the exact build versions.
 6. Failed checks do not publish a desktop release or promote a Docker image. Rerun
@@ -336,7 +347,7 @@ license files, and renderer licenses. Provide the corresponding source archive a
    since the last tag. A failed desktop asset upload can leave an unpublished draft;
    rerunning uploads the assets before making it public. Do not manually reuse or
    move a published version tag.
-7. Check the resulting assets, release notes and checksums. Hosted UI tests do not
+7. Check the resulting assets and release notes. Hosted UI tests do not
    validate real Microsoft login/tasks, upgrade on a user's machine, sleep/resume or
    code signing. Verify those separately when relevant. The desktop test workflow
    can still be run manually without publishing. An explicit `desktop-vX.Y.Z` tag
@@ -354,13 +365,13 @@ runs on other branches are skipped. This workflow change does not configure bran
 protection; PR and required-check rules can be enabled separately after review.
 
 The updater selects the highest numeric `desktop-vX.Y.Z` release and ignores script
-releases, drafts and prereleases. Publish both the installer and checksum file;
+releases, drafts and prereleases. Publish the installer;
 incomplete releases display a retry message. Desktop downloads use
 `Rewards-Desktop-X.Y.Z-x64.exe` and `Rewards-Desktop-X.Y.Z-x64.zip`; the source ZIP
 is for building from source, not for running the desktop app.
 
 安装验收已包含在 **Windows desktop test package** 工作流中，打包成功后会自动
-校验安装包、静默安装、检查安装后的应用并上传截图，无需再启动独立验收工作流。
+静默安装、检查安装后的应用并上传截图，无需再启动独立验收工作流。
 
 仓库保留四份工作流：**CI** 负责 PR 检查、手动检查及发布前验证；
 **Publish v4 updates** 负责合并后的版本规划与发布调度；

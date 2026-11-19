@@ -1,5 +1,13 @@
-export interface Settings {
+export interface Account {
+    id: string
     email: string
+    name: string
+    enabled: boolean
+}
+
+export interface Settings {
+    version: 2
+    accounts: Account[]
     mode: 'tasks' | 'tasks-search'
     browser: 'auto' | 'chrome' | 'edge'
     schedule: { enabled: boolean }
@@ -7,6 +15,7 @@ export interface Settings {
 }
 
 export interface TaskReport {
+    account?: string
     startedAt: string
     finishedAt?: string
     initialPoints?: number
@@ -23,7 +32,27 @@ export interface InstalledBrowser {
 
 export interface Snapshot {
     browser: { installed: InstalledBrowser[]; selected: InstalledBrowser | null; error: string | null }
-    balance: { value: number | null; updatedAt: string | null; error: string | null }
+    accounts: Array<
+        Account & {
+            sessions: Array<{ platform: string; hasStorageState: boolean; updatedAt: string | null }>
+            balance: { value: number | null; updatedAt: string | null; error: string | null }
+            automation: {
+                date: string
+                completedToday: boolean
+                status: 'pending' | 'running' | 'completed' | 'review'
+                message: string
+            }
+            error: string | null
+            interruption: string | null
+        }
+    >
+    needsMigration: boolean
+    migrationEmail: string
+    queue: {
+        running: boolean
+        currentId?: string | null
+        items: Array<{ id: string; status: string; error: string | null }>
+    } | null
     version: string
     update: {
         status: 'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'error'
@@ -33,19 +62,12 @@ export interface Snapshot {
         filePath: string | null
     }
     settings: Settings
-    automation: {
-        date: string
-        completedToday: boolean
-        status: 'pending' | 'running' | 'completed' | 'review'
-        message: string
-    }
     backendReady: boolean
     state: string
     error: string | null
     review?: string | null
     interruption?: string | null
     lastExit: { code: number | null; signal?: string | null; error?: string } | null
-    sessions: Array<{ platform: string; hasStorageState: boolean; updatedAt: string | null }>
     reports: TaskReport[]
 }
 
@@ -58,10 +80,14 @@ export interface DesktopBridge {
     downloadUpdate(): Promise<boolean>
     installUpdate(): Promise<boolean>
     showUpdateFile(): Promise<void>
-    start(): Promise<unknown>
+    saveAccount(value: { id?: string; email?: string; name: string; enabled?: boolean }): Promise<Settings>
+    removeAccount(value: { accountId: string }): Promise<void>
+    completeMigration(value: { email: string }): Promise<void>
+    startAll(): Promise<unknown>
+    start(value: { accountId: string }): Promise<unknown>
     stop(): Promise<unknown>
-    login(): Promise<unknown>
-    refreshBalance(): Promise<void>
+    login(value?: { accountId: string }): Promise<unknown>
+    refreshBalance(value: { accountId: string }): Promise<void>
     cancelLogin(): Promise<unknown>
     saveSettings(value: Settings): Promise<Settings>
     restartBackend(): Promise<unknown>

@@ -3,11 +3,9 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { createHash } from 'node:crypto'
 import { DesktopUpdater, compareVersions, releaseRepository } from '../lib/updater.mjs'
 
 const payload = Buffer.from('test installer')
-const digest = createHash('sha256').update(payload).digest('hex')
 function release(version, overrides = {}) {
     const tag = `desktop-v${version}`
     const asset = name => ({
@@ -18,16 +16,15 @@ function release(version, overrides = {}) {
     })
     return {
         tag_name: tag,
-        assets: [asset(`Rewards-Desktop-${version}-x64.exe`), asset('SHA256SUMS.txt')],
+        assets: [asset(`Rewards-Desktop-${version}-x64.exe`)],
         ...overrides
     }
 }
-function updater(releases, sums = digest, body = payload) {
+function updater(releases, body = payload) {
     return new DesktopUpdater({
         version: '0.1.8',
         fetch: async url => {
             if (url.includes('api.github.com')) return Response.json(releases)
-            if (url.endsWith('SHA256SUMS.txt')) return new Response(`${sums}  Rewards-Desktop-0.1.10-x64.exe\n`)
             return new Response(body)
         }
     })
@@ -62,7 +59,7 @@ test('selects highest desktop version across pages, ignoring script releases, dr
     assert.equal(current.state.status, 'latest')
 })
 
-test('downloads and verifies installer, supports cancel and cleans corrupt downloads without overwriting files', async t => {
+test('downloads installer, supports cancel and cleans incomplete downloads without overwriting files', async t => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'rewards-update-test-'))
     t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
     const destination = path.join(directory, 'installer.exe')
@@ -74,11 +71,11 @@ test('downloads and verifies installer, supports cancel and cleans corrupt downl
     assert.deepEqual(fs.readFileSync(destination), payload)
     assert.equal(instance.state.progress, 100)
     assert.equal(instance.state.filePath, destination)
-    const corrupt = updater([release('0.1.10')], '0'.repeat(64))
+    const corrupt = updater([release('0.1.10')], payload.subarray(1))
     await corrupt.check()
     await assert.rejects(
         corrupt.download(async () => destination),
-        /校验失败/
+        /下载不完整/
     )
     assert.deepEqual(fs.readFileSync(destination), payload)
     assert.deepEqual(fs.readdirSync(directory), ['installer.exe'])
@@ -112,7 +109,7 @@ test('rejects missing assets, foreign download URLs, rate limits and concurrent 
     await downloading
 })
 
-test('installation rechecks the cached checksum, retains retry state and prevents overlapping updates', async t => {
+test('installation checks cached file size, retains retry state and prevents overlapping updates', async t => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'rewards-install-test-'))
     t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
     const file = path.join(directory, 'installer.exe')
@@ -138,7 +135,7 @@ test('installation rechecks the cached checksum, retains retry state and prevent
         instance.install(() => {
             launches++
         }),
-        /校验失败/
+        /下载不完整/
     )
     assert.equal(launches, 1)
     fs.writeFileSync(file, payload)

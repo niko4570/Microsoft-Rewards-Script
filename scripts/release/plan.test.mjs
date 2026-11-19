@@ -8,7 +8,6 @@ import { affects, nextVersion, plan } from './plan.mjs'
 import { createManifest, applyManifest, versionFiles } from './versions.mjs'
 import { sourceArchive } from './source-archive.mjs'
 import { inflateRawSync } from 'node:zlib'
-import { createHash } from 'node:crypto'
 
 // Real Git fixtures verify baselines, retries and all four desktop version files.
 function fixture(t) {
@@ -245,19 +244,13 @@ test('source archive matches stamped versions, records source identity, and leav
     for (const file of versionFiles) {
         const text = fs.readFileSync(path.join(f.cwd, file), 'utf8')
         assert.equal(zipEntry(output, file), text, file)
-        assert.equal(metadata.versionFiles[file], createHash('sha256').update(text).digest('hex'))
     }
     assert.deepEqual(JSON.parse(zipEntry(output, 'RELEASE-BUILD.json')), {
         schemaVersion: metadata.schemaVersion,
         sourceSha: metadata.sourceSha,
-        versions: metadata.versions,
-        versionFiles: metadata.versionFiles
+        versions: metadata.versions
     })
     assert.equal(zipEntry(output, '.env'), null)
     assert.equal(f.git('write-tree'), indexBefore)
     assert.equal(f.git('show-ref'), refsBefore)
-    assert.equal(
-        fs.readFileSync(`${output}.sha256`, 'utf8').split(' ')[0],
-        createHash('sha256').update(fs.readFileSync(output)).digest('hex')
-    )
 })

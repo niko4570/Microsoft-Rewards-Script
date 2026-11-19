@@ -291,7 +291,7 @@ function saveManualSession(dbPath, email, platform, storageState, fingerprint, p
     } catch {}
 }
 
-async function runPlatform({ account, config, dbPath, platform, fresh }) {
+async function runPlatform({ account, config, dbPath, platform, fresh, loginState }) {
     const isMobile = platform === 'mobile'
     const stored = loadStoredSession(dbPath, account.email, platform, fresh)
     const locale = resolveLocale(account, stored.resolvedCountry)
@@ -359,7 +359,7 @@ async function runPlatform({ account, config, dbPath, platform, fresh }) {
             newContextOptions: {
                 permissions: [],
                 ignoreHTTPSErrors: ignoreCertificateErrors,
-                ...(stored.storageState ? { storageState: stored.storageState } : {}),
+                ...(loginState || stored.storageState ? { storageState: loginState || stored.storageState } : {}),
                 ...(isMobile
                     ? {
                           isMobile: true,
@@ -401,6 +401,7 @@ async function runPlatform({ account, config, dbPath, platform, fresh }) {
             'SUCCESS',
             `Saved ${platform} session for ${account.email} | cookies=${storageState.cookies.length} | origins=${storageState.origins.length}`
         )
+        return storageState
     } finally {
         process.removeListener('SIGINT', onSigInt)
         process.removeListener('SIGTERM', onSigTerm)
@@ -455,8 +456,10 @@ async function main() {
         log('INFO', 'experimental.blockMedia=true is deferred so authentication images and media remain available')
     }
 
+    let loginState
     for (const platform of platforms) {
-        await runPlatform({ account, config, dbPath, platform, fresh })
+        const state = await runPlatform({ account, config, dbPath, platform, fresh, loginState })
+        if (process.env.MRS_DATA_DIR) loginState = state
     }
 
     log('SUCCESS', `Manual login completed for ${account.email}`)

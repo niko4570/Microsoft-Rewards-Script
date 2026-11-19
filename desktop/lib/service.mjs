@@ -4,13 +4,17 @@ import { spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import { listStoredSessions } from '../../scripts/api/sessionStore.js'
-import { DailyState, localDate, matchingReport, reportComplete } from './dailyState.mjs'
+import { DailyState, dayKey, localDate, matchingReport, reportComplete } from './dailyState.mjs'
 import { Backend, killTree } from './backend.mjs'
 import { atomicJson, initializeData, validateSettings, DailyLog, readReports, redact } from './data.mjs'
 import { backendEnvironment } from './runtime.mjs'
 import { DesktopScheduler } from './scheduler.mjs'
 import { RunState, interruptionMessage } from './runState.mjs'
+import { legacyEmail, migrateLegacy } from './accountMigration.mjs'
+import { newAccount } from './data.mjs'
+import { DatabaseSync } from 'node:sqlite'
 import { detectBrowsers } from './browser.mjs'
+import { prepareLogin, commitLogin } from './loginSessions.mjs'
 
 export class DesktopService extends EventEmitter {
     constructor({
@@ -31,6 +35,7 @@ export class DesktopService extends EventEmitter {
         this.browserDetector = browserDetector
         this.browser = this.browserDetector(this.settings.browser)
         this.logger = new DailyLog(path.join(dataDirectory, 'logs'))
+        this.balances = {}
         this.balance = null
         this.balanceError = null
         try {
@@ -38,6 +43,13 @@ export class DesktopService extends EventEmitter {
             if (Number.isSafeInteger(saved.value) && saved.value >= 0 && Number.isFinite(Date.parse(saved.updatedAt)))
                 this.balance = saved
         } catch {}
+        try {
+            this.balances = JSON.parse(fs.readFileSync(path.join(dataDirectory, 'balances.json'), 'utf8'))
+        } catch {}
+        if (this.balance?.account) this.balances[this.balance.account] = this.balance
+        this.queue = null
+        this.accountErrors = {}
+        this.activeAccount = null
         this.resetScanner = resetScanner
         this.now = now
         this.sessionReader =
@@ -53,7 +65,7 @@ export class DesktopService extends EventEmitter {
             executable,
             resourceDirectory,
             dataDirectory,
-            settings: () => this.settings,
+            settings: () => this.executionSettings,
             browser: () => this.browser.selected,
             log: line => this.log(line)
         })
@@ -67,10 +79,26 @@ export class DesktopService extends EventEmitter {
         this.scheduler = new DesktopScheduler({
             settings: () => this.settings,
             daily: this.daily,
-            trigger: () => this.startRun('自动'),
+            trigger: account =>
+                this.startQueue(
+                    this.settings.accounts
+                        .filter(
+                            a =>
+                                a.enabled &&
+                                !this.daily.completed(a.email, this.settings.mode, localDate(this.now())) &&
+                                (!this.scheduler.attempts.has(
+                                    dayKey(a.email, this.settings.mode, localDate(this.now()))
+                                ) ||
+                                    a.id === account.id)
+                        )
+                        .map(a => a.id),
+                    '自动'
+                ),
             available: () =>
                 !this.stopping &&
                 !this.operation &&
+                !this.queue?.running &&
+                !this.needsMigration &&
                 !this.loginChild &&
                 !this.finishing &&
                 this.runState.value?.status !== 'running' &&
@@ -82,11 +110,176 @@ export class DesktopService extends EventEmitter {
         // Recover a crash between report verification and saving the daily flag.
         if (this.runState.value?.runId && this.runState.value.status !== 'running') this.recordOutcome()
     }
+    get needsMigration() {
+        return false // Existing internal session keys remain valid; no email migration is required.
+    }
+    get executionSettings() {
+        return { ...this.settings, email: this.activeAccount?.email || '' }
+    }
+    account(id) {
+        const account = this.settings.accounts.find(a => a.id === id)
+        if (!account) throw new Error('账号不存在')
+        return account
+    }
+    async saveAccount(value) {
+        // A name-only update is presentation metadata. Keep execution and queue
+        // objects untouched, and do not turn the running operation into "saving".
+        if (value.id && !Object.hasOwn(value, 'enabled') && !Object.hasOwn(value, 'email')) {
+            if (this.stopping || ['saving', 'migration', 'clearing', 'updating'].includes(this.operation))
+                throw new Error('账户设置正在变更，请稍后修改备注')
+            const previous = this.account(value.id)
+            const next = validateSettings({
+                ...this.settings,
+                accounts: this.settings.accounts.map(account =>
+                    account.id === previous.id ? { ...account, name: value.name } : account
+                )
+            })
+            atomicJson(path.join(this.dataDirectory, 'desktop.json'), next)
+            this.settings = next
+            this.emit('change')
+            return next
+        }
+        return this.exclusive('saving', async () => {
+            await this.ensureIdle()
+            const accounts = [...this.settings.accounts]
+            if (value.id) {
+                const previous = this.account(value.id)
+                accounts[accounts.indexOf(previous)] = { ...previous, name: value.name, enabled: value.enabled }
+            } else {
+                const account = newAccount(value.email, value.name)
+                if (account.email === legacyEmail) throw new Error('请填写真实 Microsoft 邮箱')
+                accounts.push(account)
+            }
+            const next = validateSettings({ ...this.settings, accounts })
+            atomicJson(path.join(this.dataDirectory, 'desktop.json'), next)
+            this.settings = next
+            return this.settings
+        })
+    }
+    async removeAccount(id) {
+        return this.exclusive('saving', async () => {
+            await this.ensureIdle()
+            if (this.daily.error) throw new Error(this.daily.error)
+            const account = this.account(id)
+            await this.backend.close()
+            const dbFile = path.join(this.dataDirectory, 'sessions', 'sessions.db')
+            if (fs.existsSync(dbFile)) {
+                const db = new DatabaseSync(dbFile)
+                try {
+                    db.exec('BEGIN IMMEDIATE')
+                    for (const table of ['sessions', 'account_metadata']) {
+                        if (db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(table))
+                            db.prepare(`DELETE FROM ${table} WHERE LOWER(email)=?`).run(account.email.toLowerCase())
+                    }
+                    db.exec('COMMIT')
+                } finally {
+                    db.close()
+                }
+            }
+            const days = Object.fromEntries(
+                Object.entries(this.daily.value.days).filter(
+                    ([key]) => JSON.parse(key)[0] !== account.email.toLowerCase()
+                )
+            )
+            this.daily.value = { ...this.daily.value, days }
+            atomicJson(this.daily.file, this.daily.value)
+            if (this.runState.value?.account === account.email.toLowerCase()) this.runState.save(null)
+            this.scheduler.attempts = new Set(
+                [...this.scheduler.attempts].filter(key => JSON.parse(key)[0] !== account.email.toLowerCase())
+            )
+            delete this.balances[account.email.toLowerCase()]
+            atomicJson(path.join(this.dataDirectory, 'balances.json'), this.balances)
+            fs.rmSync(path.join(this.dataDirectory, 'balance.json'), { force: true })
+            delete this.accountErrors[id]
+            this.settings = { ...this.settings, accounts: this.settings.accounts.filter(a => a.id !== id) }
+            atomicJson(path.join(this.dataDirectory, 'desktop.json'), this.settings)
+            if (this.activeAccount?.id === id) this.activeAccount = null
+        })
+    }
+    async completeMigration(email) {
+        return this.exclusive('migration', async () => {
+            await this.ensureIdle()
+            if (!this.settings.accounts.some(a => a.email === legacyEmail)) throw new Error('没有需要迁移的账号')
+            await this.backend.close()
+            this.settings = migrateLegacy(this.dataDirectory, this.settings, email)
+            this.daily = new DailyState(path.join(this.dataDirectory, 'daily-state.json'))
+            this.scheduler.daily = this.daily
+            this.runState = new RunState(path.join(this.dataDirectory, 'run-state.json'))
+            this.balance = null
+            try {
+                this.balance = JSON.parse(fs.readFileSync(path.join(this.dataDirectory, 'balance.json'), 'utf8'))
+            } catch {}
+            if (this.balance?.account) this.balances[this.balance.account] = this.balance
+            this.activeAccount = null
+        })
+    }
+    async startQueue(ids = this.settings.accounts.filter(a => a.enabled).map(a => a.id), source = '手动') {
+        const result = await this.exclusive('queueing', async () => {
+            await this.ensureIdle()
+            if (this.needsMigration) throw new Error('请先补填原有账号邮箱')
+            const accounts = ids.map(id => this.account(id))
+            if (!accounts.length) throw new Error('请先添加并启用账号')
+            this.queue = {
+                running: true,
+                source,
+                mode: this.settings.mode,
+                items: accounts.map(a => ({ id: a.id, status: 'pending', error: null }))
+            }
+            return { queued: accounts.length }
+        })
+        await this.advanceQueue()
+        if (source === '自动' && this.queue.items.every(i => i.status === 'failed'))
+            throw Object.assign(new Error(this.queue.items[0].error), {
+                safeToRetry: this.queue.items.every(i => i.safeToRetry)
+            })
+        return result
+    }
+    async advanceQueue() {
+        if (this.advancing || !this.queue?.running || this.stopping) return
+        this.advancing = true
+        try {
+            for (const item of this.queue.items) {
+                if (!this.queue.running || this.stopping) break
+                if (item.status !== 'pending') continue
+                if (
+                    this.queue.source === '自动' &&
+                    this.daily.completed(this.account(item.id).email, this.queue.mode, localDate(this.now()))
+                ) {
+                    item.status = 'skipped'
+                    continue
+                }
+                item.status = 'running'
+                this.queue.currentId = item.id
+                this.emit('change')
+                try {
+                    await this.startRun(this.queue.source, item.id, true)
+                    return // finishRun advances only after the task process exits.
+                } catch (error) {
+                    if (this.finishing) await this.finishing
+                    item.status = 'failed'
+                    item.safeToRetry = Boolean(error.safeToRetry)
+                    item.error = redact(error.message)
+                    this.accountErrors[item.id] = item.error
+                    if (this.queue.source === '自动') {
+                        const account = this.account(item.id)
+                        const run = { account: account.email, mode: this.queue.mode, date: localDate(this.now()) }
+                        if (error.safeToRetry) this.scheduler.attempts.delete(dayKey(run.account, run.mode, run.date))
+                        else this.scheduler.markAttempt(run)
+                    }
+                }
+            }
+            this.queue.running = false
+            this.queue.currentId = null
+        } finally {
+            this.advancing = false
+            this.emit('change')
+        }
+    }
     reports() {
         return readReports(path.join(this.dataDirectory, 'reports'))
     }
-    sessions() {
-        return this.sessionReader().filter(session => session.email.toLowerCase() === this.settings.email.toLowerCase())
+    sessions(email = this.executionSettings.email) {
+        return this.sessionReader().filter(session => session.email.toLowerCase() === email.toLowerCase())
     }
     recordOutcome(reports = this.reports()) {
         const run = this.runState.value
@@ -135,6 +328,30 @@ export class DesktopService extends EventEmitter {
             }
         })().finally(() => {
             this.finishing = null
+            if (this.queue?.running && this.runState.value?.status !== 'running') {
+                const item = this.queue.items.find(i => i.id === this.queue.currentId)
+                if (item?.status === 'running') {
+                    item.status = this.daily.completed(
+                        this.runState.value.account,
+                        this.runState.value.mode,
+                        this.runState.value.date
+                    )
+                        ? 'completed'
+                        : 'review'
+                }
+                if (!this.queue.items.some(i => i.status === 'pending')) {
+                    this.queue.running = false
+                    this.queue.currentId = null
+                } else
+                    setImmediate(
+                        () =>
+                            void this.advanceQueue().catch(error => {
+                                this.error = error.message
+                                this.queue.running = false
+                                this.emit('change')
+                            })
+                    )
+            }
         })
         return this.finishing
     }
@@ -163,7 +380,9 @@ export class DesktopService extends EventEmitter {
         this.pruneTimer = setInterval(() => this.logger.cleanup(), 86400000)
         void this.scheduler.tick()
     }
-    async exclusive(name, action) {
+    async exclusive(name, action, fromQueue = false) {
+        if (this.needsMigration && !['migration', 'clearing'].includes(name)) throw new Error('请先补填原有账号邮箱')
+        if (this.queue?.running && !fromQueue && name !== 'stopping') throw new Error('任务队列正在运行，请先停止')
         if (this.stopping) throw new Error('应用正在退出')
         if (this.operation || this.loginChild || this.finishing)
             throw new Error('登录或其他操作正在进行，请先完成或取消')
@@ -198,43 +417,50 @@ export class DesktopService extends EventEmitter {
         if (!this.browser.selected) throw new Error(this.browser.error)
         this.log(`使用 ${this.browser.selected.name}`)
     }
-    async startRun(source = '手动') {
+    async startRun(source = '手动', accountId, fromQueue = false) {
         let submitted = false
         let ownsBackend = false
         try {
-            return await this.exclusive('starting', async () => {
-                await this.ensureIdle()
-                if (!this.settings.email) throw new Error('请先设置账号并登录')
-                const sessions = this.sessions()
-                const stored = sessions.filter(
-                    session =>
-                        session.email.toLowerCase() === this.settings.email.toLowerCase() && session.hasStorageState
-                )
-                if (!['mobile', 'desktop'].every(platform => stored.some(session => session.platform === platform)))
-                    throw new Error('请先完成手机和桌面会话登录')
-                const runId = randomUUID()
-                await this.requireBrowser()
-                ownsBackend = true
-                // Each run gets a fresh environment and correlation ID.
-                await this.backend.close()
-                this.backend.runId = runId
-                await this.ensureBackend()
-                this.runState.start(this.settings.email, {
-                    date: localDate(this.now()),
-                    mode: this.settings.mode,
-                    runId
-                })
-                this.daily.record(this.runState.value, false)
-                this.scheduler.markAttempt(this.runState.value)
-                this.review = null
-                this.error = null
-                submitted = true
-                this.lastStatus = { state: 'running', lastExit: null }
-                const result = await this.backend.request('/start', 'POST', { accountIndex: 1 })
-                this.scheduler.message = `${source}任务已启动；完成情况请查看运行结果`
-                this.log(`${source}任务已启动`)
-                return result
-            })
+            return await this.exclusive(
+                'starting',
+                async () => {
+                    await this.ensureIdle()
+                    this.activeAccount = this.account(accountId)
+                    this.balance = this.balances[this.activeAccount.email.toLowerCase()] || null
+                    delete this.accountErrors[accountId]
+                    const sessions = this.sessions()
+                    const stored = sessions.filter(
+                        session =>
+                            session.email.toLowerCase() === this.executionSettings.email.toLowerCase() &&
+                            session.hasStorageState
+                    )
+                    if (!['mobile', 'desktop'].every(platform => stored.some(session => session.platform === platform)))
+                        throw new Error('请先完成手机和桌面会话登录')
+                    const runId = randomUUID()
+                    await this.requireBrowser()
+                    ownsBackend = true
+                    // Each run gets a fresh environment and correlation ID.
+                    await this.backend.close()
+                    this.backend.runId = runId
+                    await this.ensureBackend()
+                    this.runState.start(this.executionSettings.email, {
+                        date: localDate(this.now()),
+                        mode: this.settings.mode,
+                        runId
+                    })
+                    this.daily.record(this.runState.value, false)
+                    this.scheduler.markAttempt(this.runState.value)
+                    this.review = null
+                    this.error = null
+                    submitted = true
+                    this.lastStatus = { state: 'running', lastExit: null }
+                    const result = await this.backend.request('/start', 'POST', { accountIndex: 1 })
+                    this.scheduler.message = `${source}任务已启动；完成情况请查看运行结果`
+                    this.log(`${source}任务已启动`)
+                    return result
+                },
+                fromQueue
+            )
         } catch (error) {
             // Once /start was sent, an uncertain response must not cause a
             // second automatic run after a timeout or lost connection.
@@ -247,14 +473,16 @@ export class DesktopService extends EventEmitter {
             throw error
         }
     }
-    async refreshBalance() {
+    async refreshBalance(accountId) {
         try {
-            const result = await this.scanReset(true)
+            const result = await this.scanReset(true, accountId)
             if (!Number.isSafeInteger(result.balance) || result.balance < 0)
                 throw new Error('未读取到积分余额，请稍后重试')
             this.balanceError = null
+            delete this.accountErrors[accountId]
         } catch (error) {
             this.balanceError = redact(error.message)
+            this.accountErrors[accountId] = this.balanceError
             throw error
         } finally {
             this.emit('change')
@@ -263,22 +491,25 @@ export class DesktopService extends EventEmitter {
     rememberBalance(result) {
         if (!Number.isSafeInteger(result.balance) || result.balance < 0) return
         this.balance = {
-            account: this.settings.email.toLowerCase(),
+            account: this.executionSettings.email.toLowerCase(),
             value: result.balance,
             updatedAt: result.updatedAt || new Date().toISOString()
         }
-        atomicJson(path.join(this.dataDirectory, 'balance.json'), this.balance)
+        this.balances[this.balance.account] = this.balance
+        atomicJson(path.join(this.dataDirectory, 'balances.json'), this.balances)
         this.balanceError = null
     }
-    async scanReset(balanceOnly = false) {
+    async scanReset(balanceOnly = false, accountId) {
         return this.exclusive(balanceOnly ? 'balance' : 'scanning', async () => {
             await this.ensureIdle()
+            this.activeAccount = this.account(accountId)
+            this.balance = this.balances[this.activeAccount.email.toLowerCase()] || null
             const sessions = this.sessions()
             if (
                 !(balanceOnly ? ['desktop'] : ['mobile', 'desktop']).every(platform =>
                     sessions.some(
                         session =>
-                            session.email.toLowerCase() === this.settings.email.toLowerCase() &&
+                            session.email.toLowerCase() === this.executionSettings.email.toLowerCase() &&
                             session.platform === platform &&
                             session.hasStorageState
                     )
@@ -303,7 +534,7 @@ export class DesktopService extends EventEmitter {
                         cwd: this.dataDirectory,
                         env: backendEnvironment({
                             ...this,
-                            settings: this.settings,
+                            settings: this.executionSettings,
                             browser: this.browser.selected,
                             token: ''
                         }),
@@ -341,7 +572,17 @@ export class DesktopService extends EventEmitter {
         })
     }
     async stopRun() {
+        if (this.queue) {
+            this.queue.running = false
+            for (const item of this.queue.items)
+                if (['pending', 'running'].includes(item.status)) item.status = 'cancelled'
+            this.emit('change')
+        }
         if (this.loginChild) return this.cancelLogin()
+        // Cancel queue ownership immediately, then allow an in-flight start to
+        // finish before stopping its newly created task process.
+        if (['starting', 'queueing'].includes(this.operation)) await this.activeOperation
+        if (this.finishing) await this.finishing
         return this.exclusive('stopping', async () => {
             if (!this.backend.endpoint) return
             this.runState.interrupt()
@@ -351,7 +592,14 @@ export class DesktopService extends EventEmitter {
         })
     }
     async saveSettings(value) {
-        const next = validateSettings(value)
+        const next = validateSettings({
+            version: 2,
+            accounts: this.settings.accounts,
+            mode: value.mode,
+            browser: value.browser,
+            schedule: value.schedule,
+            startOnLogin: value.startOnLogin
+        })
         return this.exclusive('saving', async () => {
             await this.ensureIdle()
             const previous = this.settings
@@ -368,30 +616,28 @@ export class DesktopService extends EventEmitter {
             }
             this.settings = next
             await this.detectBrowser()
-            if (next.email !== previous.email) {
-                this.balance = null
-                this.balanceError = null
-                fs.rmSync(path.join(this.dataDirectory, 'balance.json'), { force: true })
-            }
             this.scheduler.reset()
-            if (next.email !== previous.email || next.mode !== previous.mode || next.browser !== previous.browser) {
-                await this.backend.close()
-            }
+            if (next.mode !== previous.mode || next.browser !== previous.browser) await this.backend.close()
             this.error = null
             this.log('设置已保存')
             return next
         })
     }
-    async login() {
-        // The desktop app has one local account slot. Keep existing session keys
-        // on upgrade; new users authenticate only in the browser.
-        if (!this.settings.email) await this.saveSettings({ ...this.settings, email: 'local@rewards.invalid' })
+    async login(accountId) {
         return this.exclusive('login', async () => {
             await this.ensureIdle()
+            const pending = !accountId
+            const account = pending
+                ? newAccount(`account-${randomUUID()}@rewards.invalid`, `账户 ${this.settings.accounts.length + 1}`)
+                : this.account(accountId)
+            this.activeAccount = account
+            await this.backend.close()
             await this.requireBrowser()
+            const loginDirectory = prepareLogin(this.dataDirectory, account.email)
             const env = backendEnvironment({
                 ...this,
-                settings: this.settings,
+                dataDirectory: loginDirectory,
+                settings: this.executionSettings,
                 browser: this.browser.selected,
                 token: ''
             })
@@ -400,7 +646,7 @@ export class DesktopService extends EventEmitter {
                 [
                     path.join(this.resourceDirectory, 'scripts/main/manualLogin.js'),
                     '--email',
-                    this.settings.email,
+                    this.executionSettings.email,
                     '--platform',
                     'both'
                 ],
@@ -421,26 +667,43 @@ export class DesktopService extends EventEmitter {
             child.stderr.on('data', chunk => this.log(chunk.toString()))
             child.once('error', error => {
                 this.loginChild = null
+                fs.rmSync(loginDirectory, { recursive: true, force: true })
                 this.error = error.message
                 this.log(error.message)
             })
             child.once('exit', code => {
-                if (this.loginChild === child) this.loginChild = null
-                if (cancelled) this.log('登录已取消；已保存的会话仍保留')
-                else if (code === 0) {
-                    this.error = null
-                    this.scheduler.reset()
-                    this.log('登录会话已保存，可以开始任务')
-                    setImmediate(() => {
-                        void this.refreshBalance()
-                            .catch(error => this.log(error.message))
-                            .finally(() => this.scheduler.tick())
-                    })
-                } else {
-                    this.error = '登录未完成，请重新登录或导出诊断'
+                try {
+                    if (this.loginChild === child) this.loginChild = null
+                    if (cancelled) this.log('登录已取消；已保存的会话仍保留')
+                    else if (code === 0) {
+                        commitLogin(loginDirectory, this.dataDirectory, account.email)
+                        if (pending) {
+                            const next = validateSettings({
+                                ...this.settings,
+                                accounts: [...this.settings.accounts, account]
+                            })
+                            atomicJson(path.join(this.dataDirectory, 'desktop.json'), next)
+                            this.settings = next
+                        }
+                        this.error = null
+                        this.scheduler.reset()
+                        this.log('登录会话已保存，可以开始任务')
+                        setImmediate(() => {
+                            void this.refreshBalance(account.id)
+                                .catch(error => this.log(error.message))
+                                .finally(() => this.scheduler.tick())
+                        })
+                    } else {
+                        this.error = '登录未完成，请重新登录或导出诊断'
+                        this.log(this.error)
+                    }
+                } catch (error) {
+                    this.error = `登录保存失败：${error.message}`
                     this.log(this.error)
+                } finally {
+                    fs.rmSync(loginDirectory, { recursive: true, force: true })
+                    this.emit('change')
                 }
-                this.emit('change')
             })
             this.log('请在打开的浏览器里完成登录；手机和桌面会话会依次打开')
         })
@@ -479,37 +742,19 @@ export class DesktopService extends EventEmitter {
             this.log('后台检查完成，已回到按需启动状态')
         })
     }
-    async snapshot() {
-        const status = this.lastStatus
-        let sessions = []
-        try {
-            sessions = this.sessions()
-        } catch (error) {
-            this.error = error.message
-        }
-        const reports = this.reports().filter(
-            report => !report.account || report.account.toLowerCase() === this.settings.email.toLowerCase()
-        )
-        const date = localDate(this.now())
+    accountSnapshot(account, allReports, allSessions, date) {
+        const reports = allReports.filter(r => r.account?.toLowerCase() === account.email.toLowerCase())
+        const sessions = allSessions.filter(s => s.email.toLowerCase() === account.email.toLowerCase())
         const run = this.runState.value
-        // A report can become readable after the exit event. Reconcile only a
-        // verified normal exit, without launching the backend or replaying work.
-        if (
-            run?.status === 'finished' &&
-            !this.daily.error &&
-            !this.daily.completed(run.account, run.mode, run.date) &&
-            reportComplete(matchingReport(run, reports))
-        )
-            this.recordOutcome(reports)
-        const completedToday = this.daily.completed(this.settings.email, this.settings.mode, date)
+        const completedToday = this.daily.completed(account.email, this.settings.mode, date)
         const currentRun =
-            run?.account === this.settings.email.toLowerCase() && run.mode === this.settings.mode && run.date === date
+            run?.account === account.email.toLowerCase() && run.mode === this.settings.mode && run.date === date
         const automationStatus =
             currentRun && run.status === 'running'
                 ? 'running'
                 : completedToday
                   ? 'completed'
-                  : currentRun
+                  : currentRun || this.daily.value.days[dayKey(account.email, this.settings.mode, date)]
                     ? 'review'
                     : 'pending'
         const automationMessage =
@@ -520,11 +765,12 @@ export class DesktopService extends EventEmitter {
                 : automationStatus === 'completed'
                   ? '当前账号和模式今日已完成，跨日后可自动运行。'
                   : automationStatus === 'review'
-                    ? this.review || '本次运行已结束，完成情况尚未确认，请查看运行结果。'
+                    ? (run?.account === account.email.toLowerCase() ? this.review : null) ||
+                      '本次运行已结束，完成情况尚未确认，请查看运行结果。'
                     : !this.settings.schedule.enabled
                       ? '自动运行已关闭，可手动开始任务。'
                       : '今日尚无已确认的完成记录，应用将在空闲时检查自动运行条件。')
-        let balance = this.balance?.account === this.settings.email.toLowerCase() ? this.balance : null
+        let balance = this.balances[account.email.toLowerCase()] || null
         for (const report of reports) {
             const value = report.finalPoints ?? report.initialPoints
             const updatedAt = report.finalPoints != null ? report.finishedAt : report.startedAt
@@ -537,27 +783,75 @@ export class DesktopService extends EventEmitter {
                 balance = { value, updatedAt }
         }
         return {
-            balance: { value: balance?.value ?? null, updatedAt: balance?.updatedAt ?? null, error: this.balanceError },
+            ...account,
+            sessions,
+            balance: {
+                value: balance?.value ?? null,
+                updatedAt: balance?.updatedAt ?? null,
+                error: this.accountErrors[account.id] || null
+            },
+            automation: { date, completedToday, status: automationStatus, message: automationMessage },
+            error: this.accountErrors[account.id] || null,
+            review: run?.account === account.email.toLowerCase() ? this.review : null,
+            interruption:
+                this.runState.isInterrupted(account.email) ||
+                this.daily.value.days[dayKey(account.email, this.settings.mode, date)]?.run?.status === 'interrupted'
+                    ? interruptionMessage
+                    : null
+        }
+    }
+    async snapshot() {
+        let allSessions = []
+        try {
+            allSessions = this.sessionReader()
+        } catch (error) {
+            this.error = error.message
+        }
+        const reports = this.reports()
+        const run = this.runState.value
+        if (
+            run?.status === 'finished' &&
+            !this.daily.error &&
+            !this.daily.completed(run.account, run.mode, run.date) &&
+            reportComplete(matchingReport(run, reports))
+        )
+            this.recordOutcome(reports)
+        if (!this.daily.error) {
+            for (const [key, day] of Object.entries(this.daily.value.days)) {
+                const previous = day.run
+                if (
+                    !day.completed &&
+                    previous?.status === 'finished' &&
+                    previous.runId === day.runId &&
+                    dayKey(previous.account, previous.mode, previous.date) === key &&
+                    previous.lastExit?.code === 0 &&
+                    !previous.lastExit.signal &&
+                    reportComplete(matchingReport(previous, reports))
+                )
+                    this.daily.record(previous, true)
+            }
+        }
+        const date = localDate(this.now())
+        return {
             version: this.version,
             settings: this.settings,
             browser: this.browser,
-            automation: {
-                date,
-                completedToday,
-                status: automationStatus,
-                message: automationMessage
-            },
+            needsMigration: this.needsMigration,
+            migrationEmail:
+                this.needsMigration && fs.existsSync(path.join(this.dataDirectory, 'account-migration.json'))
+                    ? JSON.parse(fs.readFileSync(path.join(this.dataDirectory, 'account-migration.json'), 'utf8')).email
+                    : '',
+            accounts: this.settings.accounts.map(account => this.accountSnapshot(account, reports, allSessions, date)),
+            queue: this.queue,
             backendReady: Boolean(this.backend.endpoint),
             state: this.stopping
                 ? 'exiting'
                 : this.loginChild
                   ? 'login'
-                  : this.operation || (this.finishing ? 'stopping' : this.backend.endpoint ? status.state : 'sleeping'),
+                  : this.operation ||
+                    (this.finishing ? 'stopping' : this.backend.endpoint ? this.lastStatus.state : 'sleeping'),
             error: redact(this.error || this.daily.error || this.runState.error || '') || null,
-            review: this.runState.value?.account === this.settings.email.toLowerCase() ? this.review : null,
-            interruption: this.runState.isInterrupted(this.settings.email) ? interruptionMessage : null,
-            lastExit: status?.lastExit || null,
-            sessions,
+            lastExit: this.lastStatus?.lastExit || null,
             reports
         }
     }
@@ -588,6 +882,10 @@ export class DesktopService extends EventEmitter {
                 'schedule-state.json',
                 'run-state.json',
                 'balance.json',
+                'balances.json',
+                'account-migration.json',
+                'account-migration-backup',
+                'desktop.json.v1.bak',
                 'daily-state.json'
             ]) {
                 fs.rmSync(path.join(this.dataDirectory, name), { force: true, recursive: true })
@@ -605,6 +903,10 @@ export class DesktopService extends EventEmitter {
             this.lastStatus = { state: 'idle', lastExit: null }
             this.runState.value = null
             this.balance = null
+            this.balances = {}
+            this.queue = null
+            this.accountErrors = {}
+            this.activeAccount = null
             this.balanceError = null
             this.scheduler.reset()
             this.error = null
@@ -617,6 +919,7 @@ export class DesktopService extends EventEmitter {
     }
     async closeService() {
         this.stopping = true
+        if (this.queue) this.queue.running = false
         clearInterval(this.timer)
         clearInterval(this.pruneTimer)
         if (this.scanChild) await killTree(this.scanChild.pid)
