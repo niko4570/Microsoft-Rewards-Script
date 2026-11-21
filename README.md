@@ -20,11 +20,11 @@
 
 在发布页展开 **Assets**，按用途选择：
 
-| 文件                            | 用途                                      |
-| ------------------------------- | ----------------------------------------- |
-| `Rewards-Desktop-X.Y.Z-x64.exe` | 推荐安装版，按向导安装                    |
-| `Rewards-Desktop-X.Y.Z-x64.zip` | 便携版，解压后运行 `Rewards Desktop.exe`  |
-| `rewards-desktop-source.zip`    | 对应版本的构建源码，供开发者使用          |
+| 文件                            | 用途                                     |
+| ------------------------------- | ---------------------------------------- |
+| `Rewards-Desktop-X.Y.Z-x64.exe` | 推荐安装版，按向导安装                   |
+| `Rewards-Desktop-X.Y.Z-x64.zip` | 便携版，解压后运行 `Rewards Desktop.exe` |
+| `rewards-desktop-source.zip`    | 对应版本的构建源码，供开发者使用         |
 
 运行环境以 **Windows 11 x64** 为主要验证目标。需要已安装 Chrome 或 Edge 稳定版，以及 WebView2 Runtime；安装版会在缺少 WebView2 时联网补装，便携版需自行准备。安装程序目前尚未签名。
 
