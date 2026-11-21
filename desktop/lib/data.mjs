@@ -1,8 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 
 export const defaults = {
-    email: '',
+    version: 2,
+    accounts: [],
     mode: 'tasks',
     browser: 'auto',
     schedule: { enabled: false },
@@ -18,14 +20,29 @@ export function atomicJson(file, value) {
 
 export function validateSettings(value) {
     if (!value || typeof value !== 'object') throw new Error('设置格式无效')
-    const email = value.email
-    if (
-        typeof email !== 'string' ||
-        (email !== '' && !/^[^\s@"'=#<>\\]+@[^\s@"'=#<>\\]+\.[^\s@"'=#<>\\]+$/.test(email)) ||
-        email.length > 254
-    ) {
-        throw new Error('请输入有效的账号邮箱')
-    }
+    const accounts = Object.hasOwn(value, 'email')
+        ? value.email
+            ? [{ id: 'legacy', email: value.email, name: '', enabled: true }]
+            : []
+        : (value.accounts ?? [])
+    if (!Array.isArray(accounts)) throw new Error('账号列表无效')
+    const seen = new Set()
+    const ids = new Set()
+    const normalized = accounts.map(account => {
+        const email = validateEmail(account.email)
+        if (
+            seen.has(email) ||
+            typeof account.id !== 'string' ||
+            !/^[a-zA-Z0-9-]{1,64}$/.test(account.id) ||
+            ids.has(account.id)
+        )
+            throw new Error('账号重复或标识无效')
+        if (typeof account.name !== 'string' || account.name.length > 80 || typeof account.enabled !== 'boolean')
+            throw new Error('账号设置无效')
+        seen.add(email)
+        ids.add(account.id)
+        return { id: account.id, email: account.email.trim(), name: account.name.trim(), enabled: account.enabled }
+    })
     const mode = value.mode ?? 'tasks'
     if (!['tasks', 'tasks-search'].includes(mode)) throw new Error('运行模式无效')
     const browser = value.browser ?? 'auto'
@@ -34,12 +51,27 @@ export function validateSettings(value) {
     if (!schedule || typeof schedule.enabled !== 'boolean') throw new Error('自动运行设置无效')
     if (typeof value.startOnLogin !== 'boolean') throw new Error('开机启动设置无效')
     return {
-        email: email.trim(),
+        version: 2,
+        accounts: normalized,
         mode,
         browser,
         schedule: { enabled: schedule.enabled },
         startOnLogin: value.startOnLogin
     }
+}
+
+export function validateEmail(value) {
+    if (
+        typeof value !== 'string' ||
+        value.length > 254 ||
+        !/^[^\s@"'=#<>\\]+@[^\s@"'=#<>\\]+\.[^\s@"'=#<>\\]+$/.test(value.trim())
+    )
+        throw new Error('请输入有效的账号邮箱')
+    return value.trim().toLowerCase()
+}
+
+export function newAccount(email, name = '') {
+    return { id: randomUUID(), email: validateEmail(email), name, enabled: true }
 }
 
 export function initializeData(directory, template) {
@@ -48,7 +80,12 @@ export function initializeData(directory, template) {
         fs.mkdirSync(path.join(directory, name), { recursive: true })
     const settingsFile = path.join(directory, 'desktop.json')
     if (!fs.existsSync(settingsFile)) atomicJson(settingsFile, defaults)
-    const settings = validateSettings(JSON.parse(fs.readFileSync(settingsFile, 'utf8')))
+    const original = JSON.parse(fs.readFileSync(settingsFile, 'utf8'))
+    const settings = validateSettings(original)
+    if (original.version !== 2) {
+        if (!fs.existsSync(settingsFile + '.v1.bak')) fs.copyFileSync(settingsFile, settingsFile + '.v1.bak')
+        atomicJson(settingsFile, settings)
+    }
     const configFile = path.join(directory, 'config.json')
     if (!fs.existsSync(configFile)) {
         const config = JSON.parse(fs.readFileSync(template, 'utf8'))
@@ -119,7 +156,6 @@ export function readReports(directory) {
         .readdirSync(directory)
         .filter(name => /^tasks-[a-f0-9]{12}-\d+\.json$/.test(name))
         .sort((a, b) => Number(b.match(/-(\d+)\.json$/)[1]) - Number(a.match(/-(\d+)\.json$/)[1]))
-        .slice(0, 20)
         .map(name => {
             try {
                 const report = JSON.parse(fs.readFileSync(path.join(directory, name), 'utf8'))

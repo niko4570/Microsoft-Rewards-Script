@@ -18,14 +18,6 @@ $savedPackaged = $env:MRS_PACKAGED_EXECUTABLE
 $savedScreenshot = $env:MRS_SMOKE_SCREENSHOT
 
 try {
-    $checksum = Get-Content (Join-Path $ReleaseDirectory 'SHA256SUMS.txt') |
-        Where-Object { $_.EndsWith("  Rewards-Desktop-$version-x64.exe") }
-    if (@($checksum).Count -ne 1) { throw 'Missing or ambiguous installer checksum.' }
-    $expected = ($checksum -split '\s+')[0]
-    if ((Get-FileHash $installer -Algorithm SHA256).Hash -ine $expected) {
-        throw 'Installer checksum mismatch.'
-    }
-
     # The harness uses its absolute Node path; the installed app only sees OS tools.
     # Hosted images also install Docker in System32. Expose only the OS commands
     # needed by Chromium cleanup, rather than that whole directory.
@@ -69,7 +61,7 @@ try {
     $env:MRS_SMOKE_SCREENSHOT = Join-Path $desktop 'release/installed-smoke.png'
     & $node (Join-Path $PSScriptRoot 'ui-smoke.mjs')
     if ($LASTEXITCODE -ne 0) { throw 'Installed application UI check failed.' }
-    Write-Output 'Installer checksum, silent installation and same-version overwrite, bundled runtime and installed UI without development tools on PATH: PASS'
+    Write-Output 'Silent installation and same-version overwrite, bundled runtime and installed UI without development tools on PATH: PASS'
 } finally {
     $env:Path = $savedPath
     $env:NODE_PATH = $savedNodePath

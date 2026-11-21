@@ -23,10 +23,14 @@ export class DesktopHost {
                 if (!this.updater.state.filePath) throw new Error('请先下载安装包')
                 return this.native('revealFile', this.updater.state.filePath)
             },
-            start: () => service.startRun(),
+            start: value => service.startQueue([value.accountId]),
+            startAll: () => service.startQueue(),
+            saveAccount: value => service.saveAccount(value),
+            removeAccount: value => service.removeAccount(value.accountId),
+            completeMigration: value => service.completeMigration(value.email),
             stop: () => service.stopRun(),
-            login: () => service.login(),
-            refreshBalance: () => service.refreshBalance(),
+            login: value => service.login(value?.accountId),
+            refreshBalance: value => service.refreshBalance(value.accountId),
             cancelLogin: () => service.cancelLogin(),
             saveSettings: value => service.saveSettings(value),
             restartBackend: () => service.restartBackend(),
@@ -96,11 +100,49 @@ export class DesktopHost {
 
     async invoke(action, value) {
         if (typeof action !== 'string' || !Object.hasOwn(this.actions, action)) throw new Error('不支持的操作')
-        if (action !== 'saveSettings' && value !== undefined && value !== null) throw new Error('此操作不接受参数')
+        validateAction(action, value)
         try {
             return (await this.actions[action](value)) ?? null
         } finally {
             this.changed()
         }
     }
+}
+
+export function validateAction(action, value) {
+    if (action === 'login' && value == null) return
+    const fields = {
+        start: ['accountId'],
+        login: ['accountId'],
+        refreshBalance: ['accountId'],
+        removeAccount: ['accountId'],
+        completeMigration: ['email'],
+        saveAccount: ['id', 'email', 'name', 'enabled']
+    }
+    if (action === 'saveSettings') return
+    if (!fields[action]) {
+        if (value !== undefined && value !== null) throw new Error('此操作不接受参数')
+        return
+    }
+    if (
+        !value ||
+        typeof value !== 'object' ||
+        Array.isArray(value) ||
+        Object.keys(value).some(k => !fields[action].includes(k))
+    )
+        throw new Error('操作参数无效')
+    if (
+        fields[action].includes('accountId') &&
+        (typeof value.accountId !== 'string' || !/^[a-zA-Z0-9-]{1,64}$/.test(value.accountId))
+    )
+        throw new Error('账号标识无效')
+    if (action === 'completeMigration' && typeof value.email !== 'string') throw new Error('邮箱无效')
+    if (
+        action === 'saveAccount' &&
+        (typeof value.name !== 'string' ||
+            (value.id
+                ? Object.hasOwn(value, 'enabled') && typeof value.enabled !== 'boolean'
+                : typeof value.email !== 'string'))
+    )
+        throw new Error('账号参数无效')
 }

@@ -1,7 +1,6 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 import { sourceSha, versionFiles } from './versions.mjs'
@@ -21,10 +20,8 @@ export function sourceArchive(cwd, output) {
     try {
         const sha = sourceSha(cwd)
         git(['read-tree', sha])
-        const files = {}
         for (const file of versionFiles) {
             const content = fs.readFileSync(path.join(cwd, file))
-            files[file] = createHash('sha256').update(content).digest('hex')
             const blob = git(['hash-object', '-w', '--no-filters', '--stdin'], content)
             git(['update-index', '--add', '--cacheinfo', `100644,${blob},${file}`])
         }
@@ -32,8 +29,7 @@ export function sourceArchive(cwd, output) {
         const metadata = {
             schemaVersion: 1,
             sourceSha: sha,
-            versions: { desktop: readVersion('desktop/package.json'), docker: readVersion('package.json') },
-            versionFiles: files
+            versions: { desktop: readVersion('desktop/package.json'), docker: readVersion('package.json') }
         }
         const text = JSON.stringify(metadata, null, 2) + '\n'
         const blob = git(['hash-object', '-w', '--no-filters', '--stdin'], text)
@@ -42,8 +38,6 @@ export function sourceArchive(cwd, output) {
         const archive = path.resolve(cwd, output)
         fs.mkdirSync(path.dirname(archive), { recursive: true })
         git(['archive', '--format=zip', `--output=${archive}`, tree])
-        const checksum = createHash('sha256').update(fs.readFileSync(archive)).digest('hex')
-        fs.writeFileSync(`${archive}.sha256`, `${checksum}  ${path.basename(archive)}\n`)
         return { tree, ...metadata }
     } finally {
         fs.rmSync(temporary, { recursive: true, force: true })

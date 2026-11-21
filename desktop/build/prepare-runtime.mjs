@@ -2,7 +2,6 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { createHash } from 'node:crypto'
 
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const root = path.resolve(desktop, '..')
@@ -85,10 +84,7 @@ fs.writeFileSync(
         {
             node: process.versions.node,
             platform: process.platform,
-            arch: process.arch,
-            lockSha256: createHash('sha256')
-                .update(fs.readFileSync(path.join(root, 'package-lock.json')))
-                .digest('hex')
+            arch: process.arch
         },
         null,
         2

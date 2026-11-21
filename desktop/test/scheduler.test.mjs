@@ -11,7 +11,14 @@ function fixture(t) {
     t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
     let now = new Date(2026, 9, 28, 12)
     let count = 0
-    const settings = { email: 'person@example.com', mode: 'tasks', schedule: { enabled: true } }
+    const settings = {
+        get accounts() {
+            return this.email ? [{ id: 'test', email: this.email, enabled: true }] : []
+        },
+        email: 'person@example.com',
+        mode: 'tasks',
+        schedule: { enabled: true }
+    }
     const daily = new DailyState(path.join(directory, 'daily.json'))
     const options = {
         settings: () => settings,

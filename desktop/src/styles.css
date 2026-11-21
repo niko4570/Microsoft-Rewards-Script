@@ -350,3 +350,9 @@ input[type='checkbox'] {
     gap: 8px;
     margin-bottom: 12px;
 }
+
+.account-tabs [aria-selected='true'] {
+    color: white;
+    background: #245db5;
+    border-color: #245db5;
+}

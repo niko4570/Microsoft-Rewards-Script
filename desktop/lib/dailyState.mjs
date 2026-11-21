@@ -41,7 +41,12 @@ export class DailyState {
             ...this.value,
             days: {
                 ...this.value.days,
-                [dayKey(run.account, run.mode, run.date)]: { completed, runId: run.runId, startedAt: run.startedAt }
+                [dayKey(run.account, run.mode, run.date)]: {
+                    completed,
+                    runId: run.runId,
+                    startedAt: run.startedAt,
+                    run: { ...run }
+                }
             }
         }
         atomicJson(this.file, value)

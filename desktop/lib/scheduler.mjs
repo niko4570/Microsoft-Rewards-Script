@@ -16,14 +16,21 @@ export class DesktopScheduler {
     }
     async tick() {
         const settings = this.settings()
-        if (this.busy || !settings.schedule.enabled || !settings.email) return
+        if (this.busy || !settings.schedule.enabled) return
         const date = localDate(this.now())
-        const key = dayKey(settings.email, settings.mode, date)
+        const account = settings.accounts.find(
+            a =>
+                a.enabled &&
+                !this.daily.completed(a.email, settings.mode, date) &&
+                !this.attempts.has(dayKey(a.email, settings.mode, date))
+        )
+        if (!account) return
+        const key = dayKey(account.email, settings.mode, date)
         if (this.daily.error) {
             this.message = this.daily.error
             return
         }
-        if (this.daily.completed(settings.email, settings.mode, date)) {
+        if (this.daily.completed(account.email, settings.mode, date)) {
             this.message = '今日任务已完成；等待系统日期跨日'
             return
         }
@@ -35,7 +42,7 @@ export class DesktopScheduler {
         this.busy = true
         this.attempts.add(key)
         try {
-            await this.trigger()
+            await this.trigger(account)
             this.message = '今日自动任务已启动；完成情况请查看运行结果'
         } catch (error) {
             if (error.safeToRetry) this.attempts.delete(key)

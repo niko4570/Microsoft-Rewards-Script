@@ -54,6 +54,8 @@ function App() {
     const [busy, setBusy] = useState(false)
     const [message, setMessage] = useState('')
     const [failed, setFailed] = useState(false)
+    const [selectedAccount, setSelectedAccount] = useState('')
+    const [reportAccount, setReportAccount] = useState('')
     const [updateBusy, setUpdateBusy] = useState(false)
 
     useEffect(() => {
@@ -71,6 +73,11 @@ function App() {
             })
         return unsubscribe
     }, [])
+
+    useEffect(() => {
+        const last = snapshot?.accounts.at(-1)
+        if (last) setSelectedAccount(last.id)
+    }, [snapshot?.accounts.length])
 
     async function act(action: () => Promise<unknown>, success = '') {
         setBusy(true)
@@ -114,12 +121,23 @@ function App() {
                 <p>{message || '正在连接桌面服务…'}</p>
             </main>
         )
-    const idle = ['idle', 'sleeping'].includes(snapshot.state)
-    const configured = Boolean(snapshot.settings.email)
-    const loggedIn = ['mobile', 'desktop'].every(platform =>
-        snapshot.sessions.some(session => session.platform === platform && session.hasStorageState)
-    )
-    const balance = snapshot.balance
+    const idle = ['idle', 'sleeping'].includes(snapshot.state) && !snapshot.queue?.running
+    const accountLabel = (email?: string) => {
+        const account = snapshot.accounts.find(a => a.email === email)
+        return (
+            account?.name ||
+            (email === 'local@rewards.invalid'
+                ? '账户 1'
+                : email?.endsWith('@rewards.invalid')
+                  ? `账户 ${email.slice(8, 16)}`
+                  : email) ||
+            '未知账户'
+        )
+    }
+    const currentAccount = snapshot.accounts.find(a => a.id === selectedAccount) || snapshot.accounts[0]
+    const knownBalances = snapshot.accounts.filter(a => a.balance.value !== null)
+    const totalBalance = knownBalances.reduce((sum, a) => sum + (a.balance.value ?? 0), 0)
+    const reports = snapshot.reports.filter(r => !reportAccount || r.account === reportAccount).slice(0, 20)
 
     return (
         <div className="app">
@@ -207,40 +225,31 @@ function App() {
                     <>
                         <section className="hero">
                             <div>
-                                <p className="eyebrow">每日任务 · 单账号</p>
-                                <h2>
-                                    {!configured
-                                        ? '从登录你的账号开始'
-                                        : loggedIn
-                                          ? snapshot.state === 'running'
-                                              ? '正在执行任务'
-                                              : snapshot.automation.completedToday
-                                                ? '今天的任务已完成'
-                                                : '可以开始今天的任务'
-                                          : '完成浏览器登录'}
-                                </h2>
-                                <p>
-                                    {!configured
-                                        ? '点击打开浏览器登录，在浏览器中登录你的 Microsoft 账号。应用不会保存你的密码。'
-                                        : '使用已保存的手机端和电脑端会话运行；如提示登录失效或需要验证，请重新登录。'}
-                                </p>
+                                <p className="eyebrow">每日任务 · 多账号</p>
+                                <h2>账号与任务</h2>
+                                <p>所有账号共用运行模式和自动运行设置，按列表顺序依次执行。</p>
                             </div>
                             <div className="actions">
                                 <button
                                     className="primary"
-                                    disabled={busy || !idle || !configured || !loggedIn || !snapshot.browser.selected}
-                                    onClick={() =>
-                                        void act(
-                                            () => window.desktop.start(),
-                                            '任务已启动，结束后会自动更新运行结果与今日状态'
-                                        )
+                                    disabled={
+                                        busy ||
+                                        !idle ||
+                                        !snapshot.accounts.some(a => a.enabled) ||
+                                        !snapshot.browser.selected
                                     }
+                                    onClick={() => void act(() => window.desktop.startAll(), '任务已加入队列')}
                                 >
-                                    开始任务
+                                    运行全部已启用账号
                                 </button>
                                 <button
                                     disabled={
-                                        busy || !['starting', 'running', 'stopping', 'login'].includes(snapshot.state)
+                                        busy ||
+                                        !(
+                                            snapshot.queue?.running ||
+                                            snapshot.state === 'login' ||
+                                            snapshot.state === 'running'
+                                        )
                                     }
                                     onClick={() => void act(() => window.desktop.stop())}
                                 >
@@ -248,143 +257,237 @@ function App() {
                                 </button>
                             </div>
                         </section>
-                        <section className="panel">
-                            <h3>
-                                运行模式：{snapshot.settings.mode === 'tasks-search' ? '任务＋搜索模式' : '任务模式'}
-                            </h3>
+                        <section className="panel" aria-label="所有账户总余额">
+                            <h3>总积分余额</h3>
+                            <strong>{knownBalances.length ? totalBalance.toLocaleString('zh-CN') : '暂无'}</strong>
                             <p className="muted">
-                                {snapshot.settings.mode === 'tasks-search'
-                                    ? '执行当前账号可用的签到、活动、阅读等任务，并尝试完成电脑端和手机端的每日搜索额度；实际到账以报告和 Rewards 页面为准。'
-                                    : '执行当前账号可用的签到、活动、阅读等任务，以及任务要求的搜索；不会额外刷满每日普通搜索额度。'}
+                                已读取 {knownBalances.length} / {snapshot.accounts.length}{' '}
+                                个账户；余额为各账户最近一次读取值之和。
+                            </p>
+                            <button
+                                disabled={busy || !idle || !snapshot.browser.selected || !snapshot.accounts.length}
+                                onClick={() =>
+                                    void act(async () => {
+                                        const errors: string[] = []
+                                        for (const account of snapshot.accounts) {
+                                            try {
+                                                await window.desktop.refreshBalance({ accountId: account.id })
+                                            } catch {
+                                                errors.push(accountLabel(account.email))
+                                            }
+                                        }
+                                        if (errors.length) throw new Error(`部分账户余额未更新：${errors.join('、')}`)
+                                    }, '总余额已更新')
+                                }
+                            >
+                                刷新总余额
+                            </button>
+                        </section>
+                        <section className="panel">
+                            <h3>统一运行设置</h3>
+                            <p>
+                                {snapshot.settings.mode === 'tasks-search' ? '任务＋搜索模式' : '任务模式'} ·
+                                每日自动运行{snapshot.settings.schedule.enabled ? '已开启' : '已关闭'}
+                            </p>
+                            <p className="muted">
+                                任务模式执行签到、活动、阅读及任务要求的搜索；任务＋搜索模式还会尝试完成每日普通搜索额度。实际到账以报告为准。
                             </p>
                             <button
                                 disabled={busy || !idle}
-                                onClick={() => {
-                                    const mode = snapshot.settings.mode === 'tasks-search' ? 'tasks' : 'tasks-search'
-                                    void act(
-                                        () => window.desktop.saveSettings({ ...snapshot.settings, mode }),
-                                        '运行模式已保存，下次运行生效'
+                                onClick={() =>
+                                    void act(() =>
+                                        window.desktop.saveSettings({
+                                            ...snapshot.settings,
+                                            mode: snapshot.settings.mode === 'tasks' ? 'tasks-search' : 'tasks'
+                                        })
                                     )
-                                }}
+                                }
                             >
-                                切换为{snapshot.settings.mode === 'tasks-search' ? '任务模式' : '任务＋搜索模式'}
+                                更改运行模式
                             </button>
+                            <button onClick={() => setTab('settings')}>自动运行设置</button>
                         </section>
-                        <div className="cards">
-                            <section className="card">
-                                <p className="label">登录会话</p>
-                                <h3>{loggedIn ? '已保存' : '待登录'}</h3>
+                        {snapshot.queue && (
+                            <section className="panel" aria-live="polite">
+                                <h3>{snapshot.queue.running ? '队列运行中' : '队列已结束'}</h3>
                                 <p>
-                                    {snapshot.sessions.filter(session => session.hasStorageState).length} / 2 个会话 ·
-                                    有效性会在运行时检查
+                                    {
+                                        snapshot.queue.items.filter(i => !['pending', 'running'].includes(i.status))
+                                            .length
+                                    }{' '}
+                                    / {snapshot.queue.items.length} 个账号已处理
                                 </p>
-                                <p className="muted">
-                                    在浏览器中完成 Microsoft
-                                    登录与验证，应用保存登录会话。当前按中国区域和中文配置执行任务。
-                                </p>
+                                {snapshot.queue.items.map(item => (
+                                    <p key={item.id}>
+                                        {accountLabel(snapshot.accounts.find(a => a.id === item.id)?.email)}：
+                                        {
+                                            (
+                                                {
+                                                    pending: '等待执行',
+                                                    running: '正在运行',
+                                                    completed: '已完成',
+                                                    review: '结果待确认',
+                                                    failed: '启动失败',
+                                                    cancelled: '已取消',
+                                                    skipped: '今日已完成，已跳过'
+                                                } as Record<string, string>
+                                            )[item.status]
+                                        }
+                                        {item.error ? ` · ${item.error}` : ''}
+                                    </p>
+                                ))}
+                            </section>
+                        )}
+                        <section className="panel" aria-label="账户登录">
+                            <div className="actions account-tabs" role="tablist" aria-label="账户">
+                                {snapshot.accounts.map(account => (
+                                    <button
+                                        key={account.id}
+                                        role="tab"
+                                        aria-selected={currentAccount?.id === account.id}
+                                        onClick={() => setSelectedAccount(account.id)}
+                                    >
+                                        {accountLabel(account.email)}
+                                    </button>
+                                ))}
                                 <button
                                     disabled={busy || !idle || !snapshot.browser.selected}
-                                    onClick={() => void act(() => window.desktop.login(), '请在浏览器中完成登录')}
+                                    onClick={() => void act(() => window.desktop.login(), '请在浏览器完成新账户登录')}
                                 >
-                                    打开浏览器登录
+                                    {snapshot.accounts.length ? '＋ 添加其他账户' : '打开浏览器登录'}
                                 </button>
-                                {snapshot.state === 'login' && (
-                                    <button
-                                        disabled={busy}
-                                        onClick={() => void act(() => window.desktop.cancelLogin())}
-                                    >
-                                        取消登录
-                                    </button>
-                                )}
-                            </section>
-                            <section className="card">
-                                <p className="label">自动运行</p>
-                                <h3>
-                                    {
-                                        {
-                                            pending: '今日待运行',
-                                            running: '任务运行中',
-                                            completed: '今日已完成',
-                                            review: '结果待确认'
-                                        }[snapshot.automation.status]
-                                    }
-                                </h3>
-                                <p>{snapshot.automation.message}</p>
-                                <p className="muted">
-                                    {snapshot.automation.date} · 当前账号与模式 · 自动运行
-                                    {snapshot.settings.schedule.enabled ? '已开启' : '已关闭'}
-                                </p>
-                                <button onClick={() => setTab('settings')}>自动运行设置</button>
-                            </section>
-                            <section className="card">
-                                <p className="label">积分余额</p>
-                                <h3>{balance.value == null ? '暂无数据' : balance.value.toLocaleString('zh-CN')}</h3>
-                                <p>
-                                    {balance.updatedAt
-                                        ? `更新于 ${formatTime(balance.updatedAt)}`
-                                        : '登录后点击刷新余额'}
-                                </p>
-                                <p className="muted">
-                                    {balance.error
-                                        ? `刷新失败：${balance.error}${balance.value == null ? '' : '；保留上次余额'}`
-                                        : '显示最近一次读取的可用积分余额'}
-                                </p>
-                                <button
-                                    disabled={
-                                        busy ||
-                                        !idle ||
-                                        !configured ||
-                                        !snapshot.browser.selected ||
-                                        !snapshot.sessions.some(
-                                            session => session.platform === 'desktop' && session.hasStorageState
-                                        )
-                                    }
-                                    onClick={() => void act(() => window.desktop.refreshBalance(), '积分余额已更新')}
-                                >
-                                    {snapshot.state === 'balance' ? '正在刷新…' : '刷新余额'}
-                                </button>
-                            </section>
-                        </div>
-                        <section className="panel">
-                            <h3>使用步骤</h3>
-                            <ol>
-                                <li>点击「打开浏览器登录」，按提示用同一账号依次完成手机端和电脑端登录。</li>
-                                <li>点击「开始任务」，结束后到「运行结果」查看完成、跳过及需要处理的项目。</li>
-                                <li>
-                                    需要每日自动执行时，在「应用设置」开启自动运行并保存；避免其他脚本同时运行同一账号。
-                                </li>
-                            </ol>
-                            <p className="muted">
-                                关闭窗口后应用继续在托盘运行；完全退出会停止任务。开启自动运行后，启动应用和休眠恢复时会检查电脑日期，常驻时跨日约一分钟内检查。
-                            </p>
+                            </div>
+                            {!snapshot.accounts.length && <p>在浏览器完成登录后，账户会自动添加，无需填写邮箱。</p>}
                         </section>
-                        {snapshot.lastExit && (
-                            <p className="muted">
-                                最近进程退出：
-                                {snapshot.lastExit.code === 0
-                                    ? '正常结束；任务完成情况以报告为准'
-                                    : `退出码 ${snapshot.lastExit.code ?? snapshot.lastExit.signal ?? '未知'}，请检查日志`}
-                            </p>
-                        )}
+                        {snapshot.accounts
+                            .filter(a => a.id === currentAccount?.id)
+                            .map(account => {
+                                const loggedIn = ['mobile', 'desktop'].every(platform =>
+                                    account.sessions.some(s => s.platform === platform && s.hasStorageState)
+                                )
+                                return (
+                                    <section className="panel account-row" key={account.id}>
+                                        <div className="report-heading">
+                                            <h3>{accountLabel(account.email)}</h3>
+                                            <span>{account.enabled ? '参与批量运行' : '已停用'}</span>
+                                        </div>
+
+                                        <p>
+                                            {loggedIn ? '登录会话已保存' : '待完成登录'} · 今日
+                                            {account.automation.completedToday ? '已完成' : '未确认完成'}
+                                        </p>
+                                        <p className="muted">{account.automation.message}</p>
+                                        {(account.error || account.interruption) && (
+                                            <p role="status" className="notice">
+                                                {account.error || account.interruption}
+                                            </p>
+                                        )}
+                                        <div className="actions">
+                                            <button
+                                                disabled={busy || !idle || !snapshot.browser.selected}
+                                                onClick={() =>
+                                                    void act(
+                                                        () => window.desktop.login({ accountId: account.id }),
+                                                        `请在浏览器登录 ${accountLabel(account.email)}`
+                                                    )
+                                                }
+                                            >
+                                                打开浏览器登录
+                                            </button>
+                                            <button
+                                                disabled={busy || !idle || !loggedIn || !snapshot.browser.selected}
+                                                onClick={() =>
+                                                    void act(() => window.desktop.start({ accountId: account.id }))
+                                                }
+                                            >
+                                                运行此账号
+                                            </button>
+                                            <button
+                                                disabled={busy || !idle}
+                                                onClick={() =>
+                                                    void act(() =>
+                                                        window.desktop.saveAccount({
+                                                            id: account.id,
+                                                            name: account.name,
+                                                            enabled: !account.enabled
+                                                        })
+                                                    )
+                                                }
+                                            >
+                                                {account.enabled ? '停用' : '启用'}
+                                            </button>
+                                            <button
+                                                disabled={busy}
+                                                onClick={() => {
+                                                    const name = window.prompt('账号备注', account.name)
+                                                    if (name !== null)
+                                                        void act(() =>
+                                                            window.desktop.saveAccount({
+                                                                id: account.id,
+                                                                name
+                                                            })
+                                                        )
+                                                }}
+                                            >
+                                                修改备注
+                                            </button>
+                                            <button
+                                                className="danger"
+                                                disabled={busy || !idle}
+                                                onClick={() => {
+                                                    if (
+                                                        window.confirm(
+                                                            `移除 ${accountLabel(account.email)}？将清除该账号的登录会话、余额和调度状态，保留历史报告。`
+                                                        )
+                                                    )
+                                                        void act(() =>
+                                                            window.desktop.removeAccount({ accountId: account.id })
+                                                        )
+                                                }}
+                                            >
+                                                移除
+                                            </button>
+                                        </div>
+                                    </section>
+                                )
+                            })}
+                        <p className="muted">
+                            关闭窗口后继续在托盘运行；完全退出会停止当前任务并取消剩余队列。登录会依次保存手机端和电脑端会话。
+                        </p>
                     </>
                 )}
 
                 {tab === 'results' && (
                     <>
+                        <label htmlFor="report-account">筛选报告账号</label>
+                        <select
+                            id="report-account"
+                            value={reportAccount}
+                            onChange={e => setReportAccount(e.target.value)}
+                        >
+                            <option value="">全部账号</option>
+                            {[...new Set(snapshot.reports.map(r => r.account).filter(Boolean))].map(email => (
+                                <option key={email} value={email}>
+                                    {accountLabel(email)}
+                                </option>
+                            ))}
+                        </select>
                         <p className="muted">
-                            这里展示本机最近 20
-                            份报告中属于当前账号的记录，重启后仍可查看。积分变化不等于每项任务均已完成；失败、需手动处理和未确认项目请逐项查看原因。
+                            这里展示筛选后的最近 20
+                            份报告，重启后仍可查看。积分变化不等于每项任务均已完成；失败、需手动处理和未确认项目请逐项查看原因。
                         </p>
-                        {!snapshot.reports.length && (
+                        {!reports.length && (
                             <section className="empty">
                                 <h2>还没有运行报告</h2>
                                 <p>首次运行生成报告后会自动显示；运行中可返回总览查看状态。</p>
                             </section>
                         )}
-                        {snapshot.reports.map((item, index) => (
+                        {reports.map((item, index) => (
                             <section className="panel" key={`${item.startedAt}-${index}`}>
                                 <div className="report-heading">
-                                    <h3>{formatTime(item.startedAt)}</h3>
+                                    <h3>
+                                        {accountLabel(item.account)} · {formatTime(item.startedAt)}
+                                    </h3>
                                     <span>{item.finishedAt ? '已生成报告' : '状态未确认'}</span>
                                 </div>
                                 <ReportSummary tasks={item.tasks} />
@@ -427,10 +530,7 @@ function App() {
                             className="panel settings"
                             onSubmit={event => {
                                 event.preventDefault()
-                                void act(
-                                    () => window.desktop.saveSettings({ ...settings, email: snapshot.settings.email }),
-                                    '设置已保存'
-                                )
+                                void act(() => window.desktop.saveSettings(settings), '设置已保存')
                             }}
                         >
                             <h3>浏览器与自动运行</h3>
@@ -473,7 +573,7 @@ function App() {
                                 登录 Windows 后启动到托盘
                             </label>
                             <p className="muted">
-                                按当前账号、运行模式和电脑日期分别记录完成情况。启动应用时若今日未完成，会尝试自动运行；常驻时每分钟检查，休眠恢复后也会检查。
+                                按每个账号、运行模式和电脑日期分别记录完成情况。启动应用时若今日未完成，会尝试自动运行；常驻时每分钟检查，休眠恢复后也会检查。
                                 本次应用启动期间，同一账号和模式每天只自动尝试一次；未完成时可手动重试，完全退出后重新打开也可再次自动尝试。
                                 只有正常结束且报告各项均已完成或跳过，才记为今日完成。手动运行随时可用；关闭自动运行不影响已有完成记录。
                             </p>
@@ -490,7 +590,7 @@ function App() {
                             </p>
                             <p className="muted">
                                 从 GitHub
-                                下载并校验更新后，应用将自动退出、静默安装并重新启动。请先停止任务并完成或取消登录；升级保留本地设置、登录会话和报告。自动更新仅支持安装版，便携版请从发布页下载新版
+                                下载更新后，应用将自动退出、静默安装并重新启动。请先停止任务并完成或取消登录；升级保留本地设置、登录会话和报告。自动更新仅支持安装版，便携版请从发布页下载新版
                                 ZIP。安装包暂未签名。
                             </p>
                             <div role="status" aria-live="polite">

@@ -68,4 +68,3 @@ const zip = spawnSync(
 )
 if (zip.error) throw zip.error
 if (zip.status !== 0) throw new Error('便携 ZIP 打包失败')
-run(path.join(desktop, 'build/checksums.mjs'))

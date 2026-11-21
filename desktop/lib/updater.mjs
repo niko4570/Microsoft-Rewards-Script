@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 
@@ -31,7 +31,6 @@ export class DesktopUpdater {
         this.state = { status: 'idle', version: null, progress: 0, error: null, filePath: null }
         this.release = null
         this.busy = false
-        this.digest = null
     }
 
     setState(value) {
@@ -55,7 +54,6 @@ export class DesktopUpdater {
         if (this.busy || this.state.status === 'installing') throw new Error('正在检查、下载或安装更新，请稍候')
         this.busy = true
         this.release = null
-        this.digest = null
         this.setState({ status: 'checking', error: null, version: null, progress: 0, filePath: null })
         try {
             let selected = null
@@ -80,14 +78,12 @@ export class DesktopUpdater {
             }
             const name = `Rewards-Desktop-${selected.version}-x64.exe`
             const asset = selected.assets?.find(item => item.name === name && item.state === 'uploaded')
-            const checksums = selected.assets?.find(item => item.name === 'SHA256SUMS.txt' && item.state === 'uploaded')
-            if (!asset || !checksums) throw new Error(`v${selected.version} 的安装包或校验文件尚未发布完整，请稍后重试`)
+            if (!asset) throw new Error(`v${selected.version} 的安装包尚未发布完整，请稍后重试`)
             this.release = {
                 version: selected.version,
                 name,
                 size: asset.size,
-                url: assetURL(asset, selected.tag_name),
-                checksums: assetURL(checksums, selected.tag_name)
+                url: assetURL(asset, selected.tag_name)
             }
             this.setState({ status: 'available', version: selected.version })
         } catch (error) {
@@ -108,22 +104,13 @@ export class DesktopUpdater {
             const destination = await choosePath(release.name)
             if (!destination) return false
             this.setState({ status: 'downloading', progress: 0, error: null, filePath: null })
-            const sums = await (await this.request(release.checksums)).text()
-            const digest = sums
-                .split(/\r?\n/)
-                .map(line => /^([a-f0-9]{64})\s+\*?(.+)$/i.exec(line))
-                .find(match => match?.[2] === release.name)?.[1]
-                ?.toLowerCase()
-            if (!digest) throw new Error('发布校验文件中缺少安装包的 SHA256')
             const response = await this.request(release.url, 30 * 60 * 1000)
             if (!response.body) throw new Error('下载内容为空')
             temporary = path.join(path.dirname(destination), `.rewards-update-${randomUUID()}.part`)
-            const hash = createHash('sha256')
             let received = 0
             let lastProgress = -1
             const track = new Transform({
                 transform: (chunk, _encoding, callback) => {
-                    hash.update(chunk)
                     received += chunk.length
                     const progress = release.size > 0 ? Math.min(99, Math.floor((received / release.size) * 100)) : 0
                     if (progress !== lastProgress) {
@@ -134,12 +121,11 @@ export class DesktopUpdater {
                 }
             })
             await pipeline(Readable.fromWeb(response.body), track, fs.createWriteStream(temporary, { flags: 'wx' }))
-            if ((release.size > 0 && received !== release.size) || hash.digest('hex') !== digest) {
-                throw new Error('安装包校验失败，请重新下载')
+            if (release.size > 0 && received !== release.size) {
+                throw new Error('安装包下载不完整，请重新下载')
             }
             await fs.promises.rename(temporary, destination)
             temporary = null
-            this.digest = digest
             this.setState({ status: 'downloaded', progress: 100, filePath: destination })
             return true
         } catch (error) {
@@ -153,14 +139,12 @@ export class DesktopUpdater {
 
     async install(launch) {
         if (this.busy || this.state.status === 'installing') throw new Error('正在检查、下载或安装更新，请稍候')
-        if (this.state.status !== 'downloaded' || !this.state.filePath || !this.digest)
-            throw new Error('请先下载并校验安装包')
+        if (this.state.status !== 'downloaded' || !this.state.filePath) throw new Error('请先下载安装包')
         this.busy = true
         try {
-            // Recheck on retries too: the cached file may have changed since download.
-            const hash = createHash('sha256')
-            for await (const chunk of fs.createReadStream(this.state.filePath)) hash.update(chunk)
-            if (hash.digest('hex') !== this.digest) throw new Error('安装包校验失败，请重新检查更新并下载')
+            const stat = await fs.promises.stat(this.state.filePath)
+            if (!stat.isFile() || (this.release?.size > 0 && stat.size !== this.release.size))
+                throw new Error('安装包下载不完整，请重新检查更新并下载')
             this.setState({ status: 'installing', error: null })
             await launch(this.state.filePath)
             return true

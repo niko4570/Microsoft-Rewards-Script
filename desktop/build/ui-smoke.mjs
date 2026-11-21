@@ -102,22 +102,20 @@ try {
     assert.equal(await mainWorld(page, async () => (await window.desktop.snapshot()).backendReady), false)
     assert.equal(await mainWorld(page, () => typeof window.require), 'undefined')
     assert.equal(await mainWorld(page, () => typeof window.process), 'undefined')
-    assert.equal(await page.getByLabel('账号邮箱').count(), 0)
-    await page.getByText('积分余额', { exact: true }).waitFor()
-    assert.equal(await page.getByText('最近积分变化', { exact: true }).count(), 0)
-    assert.equal(await page.getByRole('button', { name: '刷新余额', exact: true }).isDisabled(), true)
-    // Exercise the native bridge without Microsoft credentials: reaching the
-    // service's session guard proves refreshBalance passed the shell allowlist.
+    assert.equal(await page.locator('input[type=email]').count(), 0)
+    await page.getByRole('button', { name: '＋ 添加其他账户', exact: true }).waitFor()
+    const accounts = await mainWorld(page, async () => (await window.desktop.snapshot()).accounts)
+    assert.equal(accounts.length, 1)
+    assert.equal(await page.getByRole('button', { name: '运行此账号', exact: true }).isDisabled(), true)
     await assert.rejects(
-        mainWorld(page, () => window.desktop.refreshBalance()),
+        mainWorld(page, async () =>
+            window.desktop.refreshBalance({ accountId: (await window.desktop.snapshot()).accounts[0].id })
+        ),
         /请先完成桌面会话登录/
-    )
-    await mainWorld(page, () =>
-        window.desktop.saveSettings({ email: 'smoke@example.com', schedule: { enabled: false }, startOnLogin: false })
     )
     await assert.rejects(
         mainWorld(page, () => window.desktop.login('unexpected argument')),
-        /此操作不接受参数/
+        /操作参数无效/
     )
     await page.getByRole('button', { name: '应用设置', exact: true }).click()
     const browserState = await mainWorld(page, () => window.desktop.detectBrowser())
@@ -126,20 +124,23 @@ try {
     await selector.selectOption('chrome')
     await page.getByRole('button', { name: '保存设置', exact: true }).click()
     await page.getByRole('status').filter({ hasText: '设置已保存' }).waitFor()
-    assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'desktop.json'), 'utf8')).email, 'smoke@example.com')
+    assert.equal(
+        JSON.parse(fs.readFileSync(path.join(data, 'desktop.json'), 'utf8')).accounts[0].email,
+        'smoke@example.com'
+    )
     assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'desktop.json'), 'utf8')).browser, 'chrome')
     await selector.selectOption('auto')
     await page.getByRole('button', { name: '保存设置', exact: true }).click()
     await page.getByRole('status').filter({ hasText: '设置已保存' }).waitFor()
 
     await page.getByRole('button', { name: '任务总览', exact: true }).click()
-    await page.getByRole('button', { name: '切换为任务＋搜索模式', exact: true }).click()
-    await page.getByRole('heading', { name: '运行模式：任务＋搜索模式', exact: true }).waitFor()
+    await page.getByRole('button', { name: '更改运行模式', exact: true }).click()
+    await page.getByText('任务＋搜索模式 · 每日自动运行已关闭', { exact: true }).waitFor()
     assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'desktop.json'), 'utf8')).mode, 'tasks-search')
-    await page.getByRole('button', { name: '切换为任务模式', exact: true }).click()
-    await page.getByRole('heading', { name: '运行模式：任务模式', exact: true }).waitFor()
+    await page.getByRole('button', { name: '更改运行模式', exact: true }).click()
+    await page.getByText('任务模式 · 每日自动运行已关闭', { exact: true }).waitFor()
     assert.equal(JSON.parse(fs.readFileSync(path.join(data, 'desktop.json'), 'utf8')).mode, 'tasks')
-    assert.equal(await page.getByRole('button', { name: '开始任务', exact: true }).isDisabled(), true)
+    assert.equal(await page.getByRole('button', { name: '运行此账号', exact: true }).first().isDisabled(), true)
     await page.getByRole('button', { name: '运行结果', exact: true }).click()
     await page.getByRole('heading', { name: '还没有运行报告' }).waitFor()
     assert.equal(await page.getByRole('button', { name: '实时日志', exact: true }).count(), 0)
@@ -161,7 +162,10 @@ try {
     browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { timeout: 15000 })
     page = await findPage()
     await page.getByText('任务后台按需启动').waitFor()
-    assert.equal((await mainWorld(page, () => window.desktop.snapshot())).settings.email, 'smoke@example.com')
+    assert.equal(
+        (await mainWorld(page, () => window.desktop.snapshot())).settings.accounts[0].email,
+        'smoke@example.com'
+    )
     const exited = once(child, 'exit')
     await mainWorld(page, () => {
         void window.desktop.quit()

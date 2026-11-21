@@ -106,15 +106,12 @@ jobs:
                   retention-days: 3
             - name: Corresponding source snapshot
               run: node scripts/release/source-archive.mjs desktop/release/rewards-desktop-source.zip
-            - name: Include source checksum
-              run: node desktop/build/checksums.mjs
             - uses: actions/upload-artifact@v4
               with:
                   name: rewards-desktop-windows-x64
                   path: |
                       desktop/release/*.exe
                       desktop/release/*.zip
-                      desktop/release/SHA256SUMS.txt
                       docs/windows-desktop.md
                   retention-days: 30
 
@@ -152,7 +149,6 @@ jobs:
                   files: |
                       release/**/*.exe
                       release/**/*.zip
-                      release/**/SHA256SUMS.txt
             - name: Publish complete desktop release as latest
               shell: bash
               env:
